@@ -1,0 +1,281 @@
+.feed-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--bg-creme);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow: hidden;
+}
+
+.feed-header {
+  padding: 20px 0 10px 0;
+  text-align: center;
+}
+
+.logo-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+  color: var(--text-dark);
+  margin: 0;
+}
+
+.logo-icon {
+  margin-right: 2px;
+}
+
+.card-area {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 20px;
+  /* A perspetiva diz ao browser a que distância estamos do ecrã para o efeito 3D */
+  perspective: 1000px; 
+}
+
+/* O container base passa a ter tamanho fixo e a sombra sai daqui */
+.swipe-card {
+  width: 100%;
+  max-width: 380px;
+  height: 550px; /* Altura fixa essencial para o 3D não "partir" */
+  background: transparent;
+}
+
+/* O eixo que vai rodar */
+.inner-card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1); /* Animação suave */
+  transform-style: preserve-3d; /* Mantém os filhos em 3D */
+}
+
+/* Quando o estado React muda, rodamos 180 graus! */
+.swipe-card.flipped .inner-card {
+  transform: rotateY(180deg);
+}
+
+/* Regras partilhadas pela Frente e pelo Verso */
+.card-front, .card-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  /* Esconde a parte de trás quando estão virados de costas */
+  backface-visibility: hidden; 
+  border-radius: 20px;
+  background: var(--bg-white, #FFFFFF);
+  box-shadow: var(--shadow-md, 0 8px 20px rgba(0,0,0,0.08));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* A parte de trás já começa rodada 180 graus (de costas) */
+.card-back {
+  transform: rotateY(180deg);
+  padding: 25px;
+  box-sizing: border-box;
+}
+
+/* --- Imagem e Barras de Foto (Frente) --- */
+.image-container {
+  position: relative;
+  width: 100%;
+  height: 360px; /* Reduzi um pouco para caber certinho nos 550px */
+}
+
+.pet-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.story-bars {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  gap: 5px;
+  z-index: 2;
+}
+
+.bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 2px;
+}
+
+.bar.active {
+  background: var(--bg-white);
+}
+
+.photo-counter {
+  position: absolute;
+  top: 25px;
+  right: 15px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-dark);
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  z-index: 2;
+}
+
+.card-info {
+  padding: 15px 20px 5px;
+}
+
+.card-info h2 {
+  margin: 0 0 5px 0;
+  color: var(--text-dark);
+  font-size: 1.6rem;
+}
+
+.card-info p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.card-actions {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 15px 20px 25px;
+}
+
+.action-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.action-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.1;
+}
+
+.action-label.hint {
+  background: #f0eadd;
+  padding: 4px 8px;
+  border-radius: 10px;
+  margin-top: -10px;
+}
+
+.btn-dislike, .btn-like, .btn-flip {
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s;
+}
+
+.btn-dislike:active, .btn-like:active, .btn-flip:active {
+  transform: scale(0.9);
+}
+
+.btn-dislike {
+  background: var(--Pinder-red);
+  color: var(--bg-white);
+  width: 60px;
+  height: 60px;
+  font-size: 1.8rem;
+}
+
+.btn-like {
+  background: var(--Pinder-green);
+  color: var(--bg-white);
+  width: 70px;
+  height: 70px;
+  font-size: 2.2rem;
+}
+
+.btn-flip {
+  background: var(--bg-white);
+  color: var(--text-muted);
+  width: 50px;
+  height: 50px;
+  font-size: 1.5rem;
+  border: 2px solid #eee;
+}
+.back-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border-light, #D6CEC3);
+  padding-bottom: 10px;
+}
+
+.back-header h2 {
+  margin: 0;
+  color: var(--text-dark, #5C4B41);
+  font-size: 1.6rem;
+}
+
+.btn-flip-back {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid var(--border-light, #D6CEC3);
+  padding: 5px 10px;
+  border-radius: 15px;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.back-content {
+  flex: 1;
+}
+
+.back-breed {
+  color: var(--text-muted, #888);
+  font-size: 0.95rem;
+  margin: 5px 0 15px;
+}
+
+.traits-grid {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.trait-badge {
+  background: var(--bg-creme, #F4EFE6);
+  color: var(--text-dark, #5C4B41);
+  padding: 6px 12px;
+  border-radius: 15px;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.description-box h3 {
+  color: var(--text-dark, #5C4B41);
+  font-size: 1.1rem;
+  margin: 0 0 10px;
+}
+
+.description-box p {
+  color: var(--text-muted, #666);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.back-actions {
+  padding: 10px 0 0;
+  margin-top: auto;
+}

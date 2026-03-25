@@ -1,0 +1,26 @@
+:root {
+  /* Cores de Fundo e Texto */
+  --bg-creme: #F4EFE6;
+  --text-dark: #5C4B41;
+  --text-muted: #888888;
+  --bg-white: #FFFFFF;
+
+  /* Cores de Ação */
+  --Pinder-orange: #E87A4D; 
+  --Pinder-green: #4ECB71;
+  --Pinder-teal: #57B2A1;
+  --Pinder-red: #E55353;
+
+  /* Bordas e Sombras */
+  --border-light: #D6CEC3;
+  --shadow-sm: 0 4px 10px rgba(0,0,0,0.05);
+  --shadow-md: 0 8px 20px rgba(0,0,0,0.08);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-creme);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: var(--text-dark);
+}
