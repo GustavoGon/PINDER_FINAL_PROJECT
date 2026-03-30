@@ -13,22 +13,190 @@ datasource db {
 }
 
 model User {
-  user_id       String   @id @default(uuid())
-  username      String   @unique
-  email         String   @unique
-  password_hash String
-  photo         String?
-  location      String?
-  age           Int?
-  created_at    DateTime @default(now())
+  user_id    String   @id @default(uuid())
+  username   String   @unique
+  email      String   @unique
+  password   String
+  photo      String?
+  location   String?
+  dob        DateTime?
+  description String?
 
-  pets          Pet[]
+  pets            Pet[]
+  messages        Message[]
+  preferences     UserPreference[]
+
+  @@map("users")
 }
 
 model Pet {
-  pet_id   String @id @default(uuid())
-  name     String
-  owner_id String
+  pet_id     String   @id @default(uuid())
+  user_id    String
+  name       String
+  species_id String
+  breed_id   String?
+  main_photo String?
+  dob        DateTime?
+  height     Float?
+  weight     Float?
+  energy     Int?
+  description String?
 
-  owner    User   @relation(fields: [owner_id], references: [user_id])
+  owner      User     @relation(fields: [user_id], references: [user_id])
+  species    Species  @relation(fields: [species_id], references: [species_id])
+  breed      Breed?   @relation(fields: [breed_id], references: [breed_id])
+
+  photos         PetPhoto[]
+  interactions   Interaction[] @relation("petInteractions")
+  targetInteractions Interaction[] @relation("targetInteractions")
+
+  matches1 Match[] @relation("pet1")
+  matches2 Match[] @relation("pet2")
+
+  preferences PetPreference[]
+
+  @@map("pets")
 }
+
+model Species {
+  species_id String @id @default(uuid())
+  name       String
+  description String?
+
+  breeds Breed[]
+  pets   Pet[]
+
+  @@map("species")
+}
+
+model Breed {
+  breed_id   String @id @default(uuid())
+  species_id String
+  name       String
+  description String?
+
+  species Species @relation(fields: [species_id], references: [species_id])
+  pets    Pet[]
+
+  @@map("breeds")
+}
+
+model PetPhoto {
+  photo_id String @id @default(uuid())
+  pet_id   String
+  photo_nr Int
+  url      String
+
+  pet Pet @relation(fields: [pet_id], references: [pet_id])
+
+  @@map("pet_photos")
+}
+
+model Interaction {
+  interaction_id String   @id @default(uuid())
+  pet_id         String
+  target_pet_id  String
+  like_dislike   Boolean
+  timestamp      DateTime @default(now())
+
+  pet        Pet @relation("petInteractions", fields: [pet_id], references: [pet_id])
+  target_pet Pet @relation("targetInteractions", fields: [target_pet_id], references: [pet_id])
+
+  @@map("interactions")
+}
+
+model Match {
+  match_id   String   @id @default(uuid())
+  pet_1_id   String
+  pet_2_id   String
+  timestamp  DateTime @default(now())
+  unmatched  Boolean  @default(false)
+  unmatched_by String?
+  unmatch_timestamp DateTime?
+
+  pet1 Pet @relation("pet1", fields: [pet_1_id], references: [pet_id])
+  pet2 Pet @relation("pet2", fields: [pet_2_id], references: [pet_id])
+
+  messages Message[]
+
+  @@map("matches")
+}
+
+model Message {
+  message_id String   @id @default(uuid())
+  match_id   String
+  sender_id  String
+  timestamp  DateTime @default(now())
+  content    String
+
+  match  Match @relation(fields: [match_id], references: [match_id])
+  sender User  @relation(fields: [sender_id], references: [user_id])
+
+  @@map("messages")
+}
+
+model Text {
+  text_id       String @id @default(uuid())
+  original_text String
+
+  translations TranslatedText[]
+  preferences  Preference[]
+
+  @@map("texts")
+}
+
+model TranslatedText {
+  text_id  String
+  language String
+  text     String
+
+  textRef Text @relation(fields: [text_id], references: [text_id])
+
+  @@id([text_id, language])
+  @@map("translated_texts")
+}
+
+model Preference {
+  preference_id String @id @default(uuid())
+  text_id       String
+
+  text Text @relation(fields: [text_id], references: [text_id])
+
+  users UserPreference[]
+  pets  PetPreference[]
+
+  @@map("preferences")
+}
+
+model UserPreference {
+  user_id       String
+  preference_id String
+
+  user       User       @relation(fields: [user_id], references: [user_id])
+  preference Preference @relation(fields: [preference_id], references: [preference_id])
+
+  @@id([user_id, preference_id])
+  @@map("user_preferences")
+}
+
+model PetPreference {
+  pet_id        String
+  preference_id String
+
+  pet        Pet        @relation(fields: [pet_id], references: [pet_id])
+  preference Preference @relation(fields: [preference_id], references: [preference_id])
+
+  @@id([pet_id, preference_id])
+  @@map("pet_preferences")
+}
+
+model Characteristic {
+  characteristic_id String @id @default(uuid())
+  type              String
+  lower_bound       Float?
+  upper_bound       Float?
+  exact_value       Float?
+
+  @@map("characteristics")
+}
+
