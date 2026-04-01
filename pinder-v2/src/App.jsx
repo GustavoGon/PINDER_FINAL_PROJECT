@@ -4,6 +4,7 @@ import FeedSwipe from './pages/FeedSwipe';
 import DashboardTutor from './pages/DashboardTutor';
 import MatchesChat from './pages/MatchesChat';
 import GroupEvents from './pages/GroupEvents';
+import Register from './pages/Register';
 
 export default function App() {
   return (
@@ -14,6 +15,8 @@ export default function App() {
         <Route path="/profile" element={<DashboardTutor />} />
         <Route path="/chat" element={<MatchesChat />} />
         <Route path="/grupo" element={<GroupEvents />} />
+        <Route path="/register" element={<Register />} />
+        
         
       </Routes>
     </BrowserRouter>

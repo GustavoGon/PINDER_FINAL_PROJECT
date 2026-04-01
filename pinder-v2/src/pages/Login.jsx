@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import './css/Login.css';
 
 export default function Login() {
@@ -74,6 +74,13 @@ export default function Login() {
           )}
 
           <button type="submit" className="btn-primary">Entrar</button>
+          <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '14px' }}>
+  <span style={{ color: '#666' }}>Ainda não tens conta? </span>
+  <Link to="/register" style={{ color: '#ff4b4b', textDecoration: 'none', fontWeight: 'bold' }}>
+    Regista-te
+  </Link>
+</div>
+          
         </form>
       </div>
     </div>
