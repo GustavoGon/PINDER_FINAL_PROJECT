@@ -1,15 +1,37 @@
 import React from 'react';
-import { FaPaw, FaCamera, FaPencilAlt, FaHome, FaUsers, FaComments, FaUser, FaChevronDown } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
+import { FaPaw, FaCamera, FaPencilAlt, FaHome, FaUsers, FaComments, FaUser, FaChevronDown, FaSignOutAlt } from 'react-icons/fa';
 import './css/DashboardTutor.css';
 import BottomNav from '../components/BottomNav';
 
 export default function DashboardTutor() {
+  const navigate = useNavigate();
+
+  // Função para terminar a sessão
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    localStorage.clear(); 
+    navigate('/'); 
+  };
+
   return (
     <div className="profile-container">
       <header className="profile-header">
-        <h1 className="logo-title">
-          <FaPaw className="logo-icon" /> Pinder
-        </h1>
+        {/* Nova div para alinhar o Logotipo à esquerda e o Logout à direita */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <h1 className="logo-title" style={{ margin: 0 }}>
+            <FaPaw className="logo-icon" /> Pinder
+          </h1>
+          
+          {/* Ícone de Logout Discreto */}
+          <button 
+            onClick={handleLogout} 
+            title="Terminar Sessão"
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.4rem', color: '#666', padding: '5px' }}
+          >
+            <FaSignOutAlt />
+          </button>
+        </div>
         <h2 className="page-subtitle">Meu Perfil</h2>
       </header>
 
