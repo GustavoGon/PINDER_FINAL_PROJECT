@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import './css/Login.css';
+import { useLoading } from '../contexts/LoadingContext';
 
 export default function Register() {
   const [username, setUsername] = useState('');
@@ -8,13 +9,14 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  
+  const { isLoading, setIsLoading } = useLoading();
   const navigate = useNavigate();
 
   const handleRegister = async (e) => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+    setIsLoading(true);
 
     try {
       // Fazemos o pedido POST para a rota de criação do backend
@@ -46,6 +48,8 @@ export default function Register() {
     } catch (error) {
       console.error('Erro de ligação:', error);
       setErrorMessage('Não foi possível ligar ao servidor.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -94,7 +98,9 @@ export default function Register() {
             </div>
           )}
 
-          <button type="submit" className="btn-primary">Criar Conta</button>
+          <button type="submit" className="btn-primary" disabled={isLoading}>
+      {isLoading ? 'Aguarde...' : 'Criar Conta'}
+    </button>
         </form>
 
         {/* Link para voltar ao Login */}
