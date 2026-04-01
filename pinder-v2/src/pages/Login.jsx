@@ -5,11 +5,42 @@ import './css/Login.css';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState(''); // Estado para guardar erros do backend
   const navigate = useNavigate();
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    navigate('/swipe');
+    setErrorMessage(''); // Limpa os erros anteriores ao tentar novamente
+
+    try {
+      // Fazemos o pedido POST para o nosso backend
+      const response = await fetch('http://localhost:3000/users/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      // Se a resposta for 200
+      if (response.ok) {
+        console.log('Login com sucesso!', data.user);
+        
+        // Guarda o utilizador no localStorage para manter a sessão
+        localStorage.setItem('user', JSON.stringify(data.user));
+
+        // Redireciona para a página principal
+        navigate('/swipe');
+      } else {
+        // Se falhar, mostramos o erro que vem do backend
+        setErrorMessage(data.error || 'Erro ao iniciar sessão.');
+      }
+    } catch (error) {
+      console.error('Erro de ligação:', error);
+      setErrorMessage('Não foi possível ligar ao servidor. Verifica se o backend está a correr.');
+    }
   };
 
   return (  
@@ -35,6 +66,13 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             required 
           />
+          
+          {errorMessage && (
+            <div style={{ color: 'red', marginBottom: '10px', fontSize: '14px', textAlign: 'center' }}>
+              {errorMessage}
+            </div>
+          )}
+
           <button type="submit" className="btn-primary">Entrar</button>
         </form>
       </div>
