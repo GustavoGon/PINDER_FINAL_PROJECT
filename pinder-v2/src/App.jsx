@@ -5,6 +5,7 @@ import DashboardTutor from './pages/DashboardTutor';
 import MatchesChat from './pages/MatchesChat';
 import GroupEvents from './pages/GroupEvents';
 import Register from './pages/Register';
+import AddPet from './pages/AddPet';
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/chat" element={<MatchesChat />} />
         <Route path="/grupo" element={<GroupEvents />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/add-pet" element={<AddPet />} />
         
         
       </Routes>

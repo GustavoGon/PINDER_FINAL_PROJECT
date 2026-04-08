@@ -26,14 +26,17 @@ exports.createPet = async (req, res) => {
 
 exports.getPetsByUser = async (req, res) => {
   try {
-
     const userId = req.params.id; 
     
     const pets = await prisma.pet.findMany({
-      where: { user_id: userId } 
+      where: { user_id: userId },
+      include: { 
+    breed: true,       // Traz a raça
+    photos: true   // Traz o array de fotos da tabela pet_photos
+  }
     });
     
-    res.json(pets);
+    res.json(pets); 
   } catch (error) {
     console.error("ERRO NO PRISMA:", error);
     res.status(500).json({ error: "Erro ao procurar pets" });
