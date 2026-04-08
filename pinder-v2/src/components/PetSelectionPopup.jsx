@@ -19,10 +19,6 @@ export default function PetSelectionPopup({
   useEffect(() => {
     const fetchPets = async () => {
       try {
-        console.log(
-          "O REACT ESTÁ A TENTAR IR PARA:",
-          `${import.meta.env.VITE_API_URL}/pets/user/${user.user_id}`,
-        );
         const response = await fetch(
           `${import.meta.env.VITE_API_URL}/pets/user/${user.user_id}`,
         );

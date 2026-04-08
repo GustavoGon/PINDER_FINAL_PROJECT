@@ -42,3 +42,46 @@ exports.getPetsByUser = async (req, res) => {
     res.status(500).json({ error: "Erro ao procurar pets" });
   }
 };
+
+// POST /pets
+exports.createPet = async (req, res) => {
+  try {
+    // 1. Recebemos TODOS os campos que vêm do frontend
+    const { 
+      name, user_id, species_id, breed_id, 
+      dob, gender, size, energy, description, isAdoptable, 
+      photoData
+    } = req.body;
+
+    // 2. Criar o Pet na base de dados
+    const pet = await prisma.pet.create({
+      data: {
+        name,
+        user_id,
+        species_id, 
+        breed_id,
+        dob,
+        gender,
+        size,
+        energy: parseInt(energy), // Garantir que a energia é um número
+        description,
+        isAdoptable
+      },
+    });
+
+    // 3. Se o utilizador tiver escolhido uma foto, guardamos na tabela pet_photos
+    if (photoData) {
+      await prisma.petPhoto.create({
+        data: {
+          pet_id: pet.pet_id, 
+          url: photoData   
+        }
+      });
+    }
+
+    res.status(201).json(pet);
+  } catch (error) {
+    console.error("Erro ao criar pet:", error);
+    res.status(500).json({ error: "Não foi possível criar o pet." });
+  }
+};
