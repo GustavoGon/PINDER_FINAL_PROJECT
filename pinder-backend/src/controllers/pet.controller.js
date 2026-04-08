@@ -23,3 +23,19 @@ exports.createPet = async (req, res) => {
 
   res.status(201).json(pet);
 };
+
+exports.getPetsByUser = async (req, res) => {
+  try {
+
+    const userId = req.params.id; 
+    
+    const pets = await prisma.pet.findMany({
+      where: { user_id: userId } 
+    });
+    
+    res.json(pets);
+  } catch (error) {
+    console.error("ERRO NO PRISMA:", error);
+    res.status(500).json({ error: "Erro ao procurar pets" });
+  }
+};

@@ -1,8 +1,45 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { FaTimes, FaPlus } from 'react-icons/fa';
 
 export default function PetSelectionPopup({ onClose, activePet, setActivePet }) {
-  // Função auxiliar para mudar o pet e fechar o pop-up ao mesmo tempo
+  // Novos estados para guardar os pets da BD, loading e erros
+  const [pets, setPets] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Vai buscar os dados do utilizador que guardámos no Login
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  useEffect(() => {
+    const fetchPets = async () => {
+      try {
+        console.log("O REACT ESTÁ A TENTAR IR PARA:", `${import.meta.env.VITE_API_URL}/pets/user/${user.user_id}`);
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/pets/user/${user.user_id}`);
+        
+        if (!response.ok) {
+          throw new Error('Falha ao procurar os pets na base de dados.');
+        }
+
+        const data = await response.json();
+        setPets(data);
+
+      } catch (err) {
+        console.error("Erro ao carregar pets:", err);
+        setError("Não foi possível carregar os teus animais.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    // Só faz o pedido se existir um utilizador logado
+   if (user.user_id) {
+  fetchPets();
+} else {
+      setIsLoading(false);
+      setError("Sessão inválida. Por favor, faz login novamente.");
+    }
+  }, [user.user_id]);
+
   const handleSelectPet = (petId) => {
     setActivePet(petId);
     onClose();
@@ -20,45 +57,54 @@ export default function PetSelectionPopup({ onClose, activePet, setActivePet }) 
         </div>
 
         <div className="pet-list">
-          {/* 1. Perfil do Tutor */}
+         {/* 1. Perfil do Tutor*/}
           <div 
             className={`pet-item ${activePet === 'tutor' ? 'pet-active' : ''}`}
             onClick={() => handleSelectPet('tutor')}
             style={{ borderBottom: '2px dashed #D6CEC3', paddingBottom: '15px', marginBottom: '5px' }}
           >
-            <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&w=100&q=80" alt="Meu Perfil" className="pet-popup-avatar" />
+            <img 
+              // Se o utilizador tiver foto na BD usamos essa, senão usamos a dummy image
+              src={user.photo || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&w=100&q=80"} 
+              alt="Avatar do Tutor" 
+              className="pet-popup-avatar" 
+            />
             <div className="pet-popup-info">
-              <span className="pet-popup-name">O meu perfil (Tutor)</span>
-              <span className="pet-popup-breed">Quero adotar um pet</span>
+              {/* Colocamos o username aqui. Se por algum motivo falhar, diz "Tutor" */}
+              <span className="pet-popup-name">{user.username || 'Tutor'}</span>
+              <span className="pet-popup-breed">O meu perfil</span>
             </div>
             {activePet === 'tutor' && <span className="pet-badge">Ativo</span>}
           </div>
 
-          {/* 2. Pet: Pip */}
-          <div 
-            className={`pet-item ${activePet === 'pip' ? 'pet-active' : ''}`}
-            onClick={() => handleSelectPet('pip')}
-          >
-            <img src="https://images.unsplash.com/photo-1517849845537-4d257902454a?ixlib=rb-4.0.3&w=100&q=80" alt="Pip" className="pet-popup-avatar" />
-            <div className="pet-popup-info">
-              <span className="pet-popup-name">Pip</span>
-              <span className="pet-popup-breed">Pug</span>
-            </div>
-            {activePet === 'pip' && <span className="pet-badge">Ativo</span>}
-          </div>
-
-          {/* 3. Pet: Luna */}
-          <div 
-            className={`pet-item ${activePet === 'luna' ? 'pet-active' : ''}`}
-            onClick={() => handleSelectPet('luna')}
-          >
-            <img src="https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?ixlib=rb-4.0.3&w=100&q=80" alt="Luna" className="pet-popup-avatar" />
-            <div className="pet-popup-info">
-              <span className="pet-popup-name">Luna</span>
-              <span className="pet-popup-breed">French Bulldog</span>
-            </div>
-            {activePet === 'luna' && <span className="pet-badge">Ativo</span>}
-          </div>
+          {/* 2. Lista Dinâmica de Pets vindos da BD */}
+          {isLoading ? (
+            <p style={{ textAlign: 'center', padding: '20px', color: '#666' }}>A carregar patas... 🐾</p>
+          ) : error ? (
+            <p style={{ textAlign: 'center', color: '#ff4d4d', fontSize: '14px' }}>{error}</p>
+          ) : pets.length === 0 ? (
+            <p style={{ textAlign: 'center', fontSize: '14px', color: '#999', margin: '15px 0' }}>Ainda não adicionaste nenhum pet.</p>
+          ) : (
+            pets.map((pet) => (
+              <div 
+                key={pet.id}
+                className={`pet-item ${activePet === pet.id ? 'pet-active' : ''}`}
+                onClick={() => handleSelectPet(pet.id)}
+              >
+                <img 
+                  // Se o pet não tiver foto na BD, mostramos uma imagem genérica de cão
+                  src={pet.photoUrl || "https://images.unsplash.com/photo-1517849845537-4d257902454a?ixlib=rb-4.0.3&w=100&q=80"} 
+                  alt={pet.name} 
+                  className="pet-popup-avatar" 
+                />
+                <div className="pet-popup-info">
+                  <span className="pet-popup-name">{pet.name}</span>
+                  <span className="pet-popup-breed">{pet.breed || 'Raça não definida'}</span>
+                </div>
+                {activePet === pet.id && <span className="pet-badge">Ativo</span>}
+              </div>
+            ))
+          )}
         </div>
 
         <button className="btn-add-pet">
