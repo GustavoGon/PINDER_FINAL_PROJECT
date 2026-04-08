@@ -1,4 +1,5 @@
 const prisma = require("../prisma");
+
 const bcrypt = require("bcrypt");
 
 // GET /users

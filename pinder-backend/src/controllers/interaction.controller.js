@@ -1,7 +1,5 @@
 const prisma = require("../prisma");
 
-const prisma = require("../prisma");
-
 exports.createInteraction = async (req, res) => {
   try {
     const { pet_id, target_pet_id, like_dislike } = req.body;
