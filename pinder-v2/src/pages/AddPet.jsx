@@ -1,91 +1,146 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaPaw, FaCamera, FaChevronDown, FaArrowLeft } from 'react-icons/fa';
+import { FaPaw, FaCamera, FaChevronDown, FaArrowLeft, FaSearch } from 'react-icons/fa';
 import './css/DashboardTutor.css';
 import BottomNav from '../components/BottomNav';
-import { useLoading } from '../contexts/LoadingContext'; // O teu loading global!
+import { useLoading } from '../contexts/LoadingContext';
 
 export default function AddPet() {
   const navigate = useNavigate();
   const { isLoading, setIsLoading } = useLoading();
-  const fileInputRef = useRef(null); // Referência para o input de ficheiro invisível
+  const fileInputRef = useRef(null);
+
+  // Estados para as listas vindas da BD
+  const [speciesList, setSpeciesList] = useState([]);
+  const [breedsList, setBreedsList] = useState([]);
+
+  // Estados do Autocomplete: ESPÉCIE
+  const [speciesSearch, setSpeciesSearch] = useState('');
+  const [showSpeciesList, setShowSpeciesList] = useState(false);
+
+  // Estados do Autocomplete: RAÇA
+  const [breedSearch, setBreedSearch] = useState('');
+  const [showBreedList, setShowBreedList] = useState(false);
 
   // Estados do formulário
   const [name, setName] = useState('');
   const [dob, setDob] = useState('');
-  const [breed, setBreed] = useState(''); // O ideal no futuro seria um <select> com as raças da BD
+  const [speciesId, setSpeciesId] = useState(''); 
+  const [breedId, setBreedId] = useState('');     
   const [gender, setGender] = useState('Macho');
   const [size, setSize] = useState('');
   const [energy, setEnergy] = useState(3);
   const [description, setDescription] = useState('');
   const [isAdoptable, setIsAdoptable] = useState(false);
   
-  // Estados para a foto
   const [photoPreview, setPhotoPreview] = useState("https://images.unsplash.com/photo-1543466835-00a7907e9de1?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80");
-  const [photoData, setPhotoData] = useState(null); // Vai guardar o código da imagem
-  
+  const [photoData, setPhotoData] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Função para abrir a galeria quando se clica no botão da câmara
-  const handleCameraClick = () => {
-    fileInputRef.current.click();
-  };
+  // 1. Carregar Espécies
+  useEffect(() => {
+    const fetchSpecies = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/species`);
+        if (response.ok) {
+          const data = await response.json();
+          setSpeciesList(data);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar espécies:', error);
+      }
+    };
+    fetchSpecies();
+  }, []);
 
-  // Função que lê a imagem escolhida pelo telemóvel
+  // 2. Carregar Raças
+  useEffect(() => {
+    const fetchBreeds = async () => {
+      if (!speciesId) {
+        setBreedsList([]);
+        return;
+      }
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/breeds/species/${speciesId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setBreedsList(data);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar raças:', error);
+      }
+    };
+    fetchBreeds();
+  }, [speciesId]);
+
+  const handleCameraClick = () => { fileInputRef.current.click(); };
+
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setPhotoPreview(reader.result); // Atualiza a imagem no ecrã
-        setPhotoData(reader.result);    // Guarda o texto Base64 para enviar ao backend
+        setPhotoPreview(reader.result);
+        setPhotoData(reader.result);
       };
       reader.readAsDataURL(file);
     }
   };
 
+  // --- LÓGICA DOS AUTOCOMPLETES ---
+  
+  // Filtra as espécies (mostra max 10)
+  const filteredSpecies = speciesList
+    .filter(s => s.name.toLowerCase().includes(speciesSearch.toLowerCase()))
+    .slice(0, 10);
+  const selectedSpeciesName = speciesList.find(s => s.species_id === speciesId)?.name || '';
+
+  // Filtra as raças (mostra max 10)
+  const filteredBreeds = breedsList
+    .filter(b => b.name.toLowerCase().includes(breedSearch.toLowerCase()))
+    .slice(0, 10);
+  const selectedBreedName = breedsList.find(b => b.breed_id === breedId)?.name || '';
+
+  // Fecha todas as listas
+  const closeAllLists = () => {
+    setShowSpeciesList(false);
+    setShowBreedList(false);
+  };
+
+  // --- SUBMIT ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
 
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (!speciesId || !breedId) {
+      setErrorMessage('Por favor, seleciona a Espécie e a Raça do teu pet.');
+      return;
+    }
 
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
     if (!user.user_id) {
       setErrorMessage('Sessão inválida. Faz login novamente.');
       return;
     }
 
-    setIsLoading(true); // Ativa o loading global!
+    setIsLoading(true);
 
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL}/pets`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: name,
-          user_id: user.user_id,
-          species_id: "CAO", // ID provisório (Ex: 1 = Cão)
-          breed_id: 1,   // ID provisório (Precisarás de ir buscar as raças à BD depois)
-          dob: dob,
-          gender: gender,
-          size: size,
-          energy: energy,
-          description: description,
-          isAdoptable: isAdoptable,
-          photoData: photoData // Envia a foto!
+          name, user_id: user.user_id, species_id: speciesId, breed_id: breedId,
+          dob, gender, size, energy, description, isAdoptable, photoData 
         }),
       });
 
-      if (response.ok) {
-        navigate(-1); // Volta atrás com sucesso
-      } else {
+      if (response.ok) navigate(-1);
+      else {
         const data = await response.json();
         setErrorMessage(data.error || 'Erro ao adicionar o pet.');
       }
     } catch (error) {
-      console.error('Erro:', error);
       setErrorMessage('Não foi possível ligar ao servidor.');
     } finally {
       setIsLoading(false);
@@ -94,14 +149,17 @@ export default function AddPet() {
 
   return (
     <div className="profile-container">
+      {/* Overlay invisível para fechar qualquer lista aberta ao clicar fora */}
+      {(showBreedList || showSpeciesList) && (
+        <div className="autocomplete-overlay" onClick={closeAllLists}></div>
+      )}
+
       <header className="profile-header">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
           <button onClick={() => navigate(-1)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#666', padding: '5px' }}>
             <FaArrowLeft />
           </button>
-          <h1 className="logo-title" style={{ margin: 0 }}>
-            <FaPaw className="logo-icon" /> Pinder
-          </h1>
+          <h1 className="logo-title" style={{ margin: 0 }}><FaPaw className="logo-icon" /> Pinder</h1>
           <div style={{ width: '24px' }}></div> 
         </div>
         <h2 className="page-subtitle">Adicionar Novo Pet</h2>
@@ -110,26 +168,14 @@ export default function AddPet() {
       <main className="profile-content">
         <form onSubmit={handleSubmit}>
           
-          {/* Avatar com Input de Ficheiro Invisível */}
           <div className="avatar-section">
             <div className="avatar-wrapper">
               <img src={photoPreview} alt="Novo Pet" className="avatar-image" style={{ objectFit: 'cover' }} />
-              
-              {/* O verdadeiro input de ficheiros (escondido) */}
-              <input 
-                type="file" 
-                accept="image/*" // Aceita apenas imagens
-                ref={fileInputRef} 
-                onChange={handleImageChange} 
-                style={{ display: 'none' }} 
-              />
-              
-              {/* O botão bonito que aciona o input invisível */}
+              <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageChange} style={{ display: 'none' }} />
               <button type="button" className="btn-icon btn-camera" onClick={handleCameraClick}>
                 <FaCamera />
               </button>
             </div>
-
           </div>
 
           <div className="form-grid">
@@ -147,11 +193,107 @@ export default function AddPet() {
               </div>
             </div>
 
-            {/* NOTA: Para um projeto perfeito, isto no futuro deveria ser um <select> que vai buscar as raças à BD */}
-            <div className="input-group">
-              <label>Raça (ID Temporário)</label>
-              <div className="input-with-icon">
-                <input type="text" placeholder="Ex: Golden Retriever" value={breed} onChange={(e) => setBreed(e.target.value)} />
+            {/* AUTOCOMPLETE DA ESPÉCIE */}
+            {/* zIndex 1002 garante que a lista de espécies passa por cima da caixa de raças */}
+            <div className="input-group" style={{ zIndex: showSpeciesList ? 1002 : 1 }}>
+              <label>Espécie</label>
+              <div className="autocomplete-container">
+                <div className="input-with-icon">
+                  <input 
+                    type="text" 
+                    placeholder="Pesquisar espécie..."
+                    value={showSpeciesList ? speciesSearch : selectedSpeciesName} 
+                    onChange={(e) => {
+                      setSpeciesSearch(e.target.value);
+                      setShowSpeciesList(true);
+                      
+                      // Ao começar a escrever na espécie, limpamos tudo para forçar nova escolha
+                      setSpeciesId(''); 
+                      setBreedId('');
+                      setBreedSearch('');
+                    }}
+                    onFocus={() => {
+                      setShowSpeciesList(true);
+                      setShowBreedList(false); // Fecha a de baixo se estiver aberta
+                    }}
+                    required
+                  />
+                  <FaSearch className="edit-icon dropdown-icon" style={{ fontSize: '12px' }} />
+                </div>
+
+                {showSpeciesList && (
+                  <ul className="autocomplete-list">
+                    {filteredSpecies.length > 0 ? (
+                      filteredSpecies.map((species) => (
+                        <li 
+                          key={species.species_id} 
+                          className="autocomplete-item"
+                          onClick={() => {
+                            setSpeciesId(species.species_id); // Guarda o ID da espécie
+                            setSpeciesSearch('');             // Limpa a pesquisa
+                            setShowSpeciesList(false);        // Fecha a lista
+                            
+                            // Limpa a raça sempre que troca de espécie
+                            setBreedId('');
+                            setBreedSearch('');
+                          }}
+                        >
+                          {species.name}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="autocomplete-empty">Nenhuma espécie encontrada</li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            {/* AUTOCOMPLETE DA RAÇA */}
+            <div className="input-group" style={{ zIndex: showBreedList ? 1001 : 1 }}>
+              <label>Raça</label>
+              <div className="autocomplete-container">
+                <div className="input-with-icon">
+                  <input 
+                    type="text" 
+                    placeholder={!speciesId ? 'Primeiro escolhe a espécie' : 'Pesquisar raça...'}
+                    disabled={!speciesId}
+                    value={showBreedList ? breedSearch : selectedBreedName} 
+                    onChange={(e) => {
+                      setBreedSearch(e.target.value);
+                      setShowBreedList(true);
+                      setBreedId(''); 
+                    }}
+                    onFocus={() => {
+                      setShowBreedList(true);
+                      setShowSpeciesList(false); // Fecha a de cima se estiver aberta
+                    }}
+                    required
+                  />
+                  <FaSearch className="edit-icon dropdown-icon" style={{ fontSize: '12px' }} />
+                </div>
+
+                {showBreedList && speciesId && (
+                  <ul className="autocomplete-list">
+                    {filteredBreeds.length > 0 ? (
+                      filteredBreeds.map((breed) => (
+                        <li 
+                          key={breed.breed_id} 
+                          className="autocomplete-item"
+                          onClick={() => {
+                            setBreedId(breed.breed_id); 
+                            setBreedSearch('');         
+                            setShowBreedList(false);    
+                          }}
+                        >
+                          {breed.name}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="autocomplete-empty">Nenhuma raça encontrada</li>
+                    )}
+                  </ul>
+                )}
               </div>
             </div>
 

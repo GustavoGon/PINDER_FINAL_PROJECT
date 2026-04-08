@@ -7,6 +7,8 @@ const petRoutes = require("./routes/pet.routes");
 const interactionRoutes = require("./routes/interaction.routes");
 const matchRoutes = require("./routes/match.routes");
 const messageRoutes = require("./routes/message.routes");
+const speciesRoutes = require('./routes/species.routes');
+const breedRoutes = require('./routes/breed.routes');
 
 const app = express();
 
@@ -16,6 +18,8 @@ app.use(express.json()); // Permite que o app entenda corpo de requisição em J
 
 // --- Rotas ---
 app.use("/users", userRoutes);
+app.use('/species', speciesRoutes);
+app.use('/breeds', breedRoutes);
 app.use("/pets", petRoutes);
 app.use("/interactions", interactionRoutes);
 app.use("/matches", matchRoutes);
