@@ -20,6 +20,7 @@ app.use("/pets", petRoutes);
 app.use("/interactions", interactionRoutes);
 app.use("/matches", matchRoutes);
 app.use("/messages", messageRoutes);
+app.use("/uploads", express.static("uploads"));
 
 // Rota de teste inicial
 app.get("/", (req, res) => {
