@@ -53,6 +53,8 @@ exports.createPet = async (req, res) => {
       photoData
     } = req.body;
 
+    const validDob = dob ? new Date(dob).toISOString() : null;
+
     // 2. Criar o Pet na base de dados
     const pet = await prisma.pet.create({
       data: {
@@ -60,7 +62,7 @@ exports.createPet = async (req, res) => {
         user_id,
         species_id, 
         breed_id,
-        dob,
+        dob: validDob,
         gender,
         size,
         energy: parseInt(energy), // Garantir que a energia é um número

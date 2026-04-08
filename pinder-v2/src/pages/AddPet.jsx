@@ -187,9 +187,13 @@ export default function AddPet() {
             </div>
             
             <div className="input-group">
-              <label>Idade / Data nascimento</label>
+              <label>Data de Nascimento</label>
               <div className="input-with-icon">
-                <input type="text" placeholder="Ex: 3 anos" value={dob} onChange={(e) => setDob(e.target.value)} />
+                <input 
+                  type="date" 
+                  value={dob} 
+                  onChange={(e) => setDob(e.target.value)} 
+                />
               </div>
             </div>
 
