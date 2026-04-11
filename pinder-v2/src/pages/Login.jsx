@@ -29,7 +29,8 @@ export default function Login() {
         console.log('Login com sucesso!', data.user);
         
         // Guarda o utilizador no localStorage para manter a sessão
-        localStorage.setItem('user', JSON.stringify(data.user));
+        const { photo, ...userWithoutPhoto } = data.user;
+        localStorage.setItem('user', JSON.stringify(userWithoutPhoto));
 
         // Redireciona para a página principal
         navigate('/swipe');

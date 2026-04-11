@@ -2,6 +2,28 @@ const prisma = require("../prisma");
 
 const bcrypt = require("bcrypt");
 
+// GET /users/:user_id
+exports.getUserById = async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    
+    // Vai buscar o utilizador à BD
+    const user = await prisma.user.findUnique({
+      where: { user_id: user_id }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "Utilizador não encontrado" });
+    }
+
+    res.status(200).json(user);
+  } catch (error) {
+    console.error("Erro ao procurar utilizador:", error);
+    res.status(500).json({ error: "Erro interno do servidor." });
+  }
+};
+
+
 // GET /users
 exports.getUsers = async (req, res) => {
   try {
@@ -30,6 +52,7 @@ exports.createUser = async (req, res) => {
         username,
         email,
         password: hashedPassword,
+        isBanned: false
       },
     });
 
@@ -84,5 +107,28 @@ exports.loginUser = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Error during login" });
+  }
+};
+
+exports.updateUser = async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const { username, dob, location, photo } = req.body;
+
+    // Atualiza o utilizador na base de dados
+    const updatedUser = await prisma.user.update({
+      where: { user_id: user_id },
+      data: {
+        username: username,
+        dob: dob, 
+        location: location, 
+        photo: photo !== undefined ? photo : undefined
+      }
+    });
+
+    res.status(200).json({ message: "Utilizador atualizado", user: updatedUser });
+  } catch (error) {
+    console.error("Erro ao atualizar utilizador:", error);
+    res.status(500).json({ error: "Erro interno do servidor ao atualizar utilizador." });
   }
 };

@@ -89,49 +89,51 @@ exports.updatePet = async (req, res) => {
     const { pet_id } = req.params;
     const { 
       name, dob, gender, size, energy, description, forAdoption, 
-      new_gallery_photos, deleted_photo_ids // <--- O array de fotos extra que vem do frontend
+      species_id, 
+      breed_id,   
+      main_photo,
+      new_gallery_photos,
+      deleted_photo_ids
     } = req.body;
 
-    // 1. Atualizar os dados normais do pet
+    // Atualiza os dados na Base de Dados
     const updatedPet = await prisma.pet.update({
       where: { pet_id: pet_id },
       data: {
-        name, dob, gender, size, energy, description, forAdoption
+        name, dob, gender, size, energy, description, forAdoption,
+        species_id: species_id !== undefined ? species_id : undefined,
+        breed_id: breed_id !== undefined ? breed_id : undefined,       
+        main_photo: main_photo !== undefined ? main_photo : undefined 
       }
     });
 
-    // 2. Se vieram fotos extra na galeria, guardamos na tabela PetPhoto!
+    // Apaga as fotos que o utilizador removeu no X
+    if (deleted_photo_ids && deleted_photo_ids.length > 0) {
+      await prisma.petPhoto.deleteMany({
+        where: { photo_id: { in: deleted_photo_ids } }
+      });
+    }
+
+    // Guarda as fotos novas da galeria
     if (new_gallery_photos && new_gallery_photos.length > 0) {
-      // Descobrir qual é o último número de foto para não sobrepor
       const count = await prisma.petPhoto.count({ where: { pet_id } });
-      
       let currentPhotoNr = count + 1;
 
-      // Percorre o array e guarda cada foto na tabela
       for (const photoData of new_gallery_photos) {
         await prisma.petPhoto.create({
           data: {
             pet_id: pet_id,
-            url: photoData, // Guarda a base64 (ou lógica de upload para S3/Cloudinary)
+            url: photoData, 
             photo_nr: currentPhotoNr
           }
         });
         currentPhotoNr++;
       }
     }
-  if (deleted_photo_ids && deleted_photo_ids.length > 0) {
-      await prisma.petPhoto.deleteMany({
-        where: {
-          photo_id: { in: deleted_photo_ids } // Deleta todas as fotos cujo ID esteja no array de IDs a deletar
-        }
-      });
-    }
 
     res.json({ message: "Pet atualizado com sucesso!", pet: updatedPet });
-
   } catch (error) {
     console.error("Erro ao atualizar pet:", error);
     res.status(500).json({ error: "Erro ao atualizar dados do pet." });
   }
-  
 };

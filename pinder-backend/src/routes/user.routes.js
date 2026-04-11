@@ -18,4 +18,11 @@ router.post("/upload", upload.single("photo"), async (req, res) => {
   res.json({ url: filePath });
 });
 
+// UPDATE user
+router.put('/:user_id', userController.updateUser);
+
+// GET user by ID
+router.get('/:user_id', userController.getUserById);
+
+
 module.exports = router;

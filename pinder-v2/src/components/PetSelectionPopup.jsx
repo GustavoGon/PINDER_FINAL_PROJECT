@@ -1,33 +1,42 @@
 import React, { useState, useEffect } from "react";
 import { FaTimes, FaPlus } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
-import { useActiveProfile } from "../contexts/ActiveProfileContext"; // Importa o contexto
+import { useActiveProfile } from "../contexts/ActiveProfileContext";
 
 export default function PetSelectionPopup({ onClose }) {
   const [pets, setPets] = useState([]);
+  const [tutorData, setTutorData] = useState(null); // 👈 Novo estado para guardar a foto do Tutor
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
-  // Traz o estado global
   const { activeProfile, setActiveProfile } = useActiveProfile();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
   useEffect(() => {
-    const fetchPets = async () => {
+    const fetchDados = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/pets/user/${user.user_id}`);
-        if (!response.ok) throw new Error("Falha ao procurar os pets na base de dados.");
-        const data = await response.json();
-        setPets(data);
+        // 1. Vai buscar os pets
+        const petsResponse = await fetch(`${import.meta.env.VITE_API_URL}/pets/user/${user.user_id}`);
+        if (!petsResponse.ok) throw new Error("Falha ao procurar os pets.");
+        const petsData = await petsResponse.json();
+        setPets(petsData);
+
+        // 2. Vai buscar a foto atualizada do Tutor à base de dados
+        const userResponse = await fetch(`${import.meta.env.VITE_API_URL}/users/${user.user_id}`);
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          setTutorData(userData);
+        }
+
       } catch (err) {
-        setError("Não foi possível carregar os teus animais.");
+        setError("Não foi possível carregar os perfis.");
       } finally {
         setIsLoading(false);
       }
     };
 
-    if (user.user_id) fetchPets();
+    if (user.user_id) fetchDados();
     else {
       setIsLoading(false);
       setError("Sessão inválida. Por favor, faz login novamente.");
@@ -43,7 +52,7 @@ export default function PetSelectionPopup({ onClose }) {
         </div>
 
         <div className="pet-list">
-          {/* 1. Perfil do Tutor */}
+          {/* PERFIL DO TUTOR */}
           <div
             className={`pet-item ${activeProfile.type === "tutor" ? "pet-active" : ""}`}
             onClick={() => {
@@ -53,18 +62,19 @@ export default function PetSelectionPopup({ onClose }) {
             style={{ borderBottom: "2px dashed #D6CEC3", paddingBottom: "15px", marginBottom: "5px" }}
           >
             <img
-              src={user.photo || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&w=100&q=80"}
+              // 👇 Mostra a foto da BD. Se não tiver, usa o Placeholder (igual aos pets!)
+              src={tutorData?.photo || "https://placehold.co/400x400/eeeeee/999999?text=Sem+Foto"}
               alt="Avatar do Tutor"
               className="pet-popup-avatar"
             />
             <div className="pet-popup-info">
-              <span className="pet-popup-name">{user.username || "Tutor"}</span>
+              <span className="pet-popup-name">{tutorData?.username || user.username || "Tutor"}</span>
               <span className="pet-popup-breed">O meu perfil</span>
             </div>
             {activeProfile.type === "tutor" && <span className="pet-badge">Ativo</span>}
           </div>
 
-          {/* 2. Lista Dinâmica de Pets */}
+          {/* LISTA DE PETS */}
           {isLoading ? (
             <p style={{ textAlign: "center", padding: "20px", color: "#666" }}>A carregar patas... 🐾</p>
           ) : error ? (
@@ -77,7 +87,6 @@ export default function PetSelectionPopup({ onClose }) {
             pets.map((pet) => (
               <div
                 key={pet.pet_id}
-                // 👇 AQUI: Comparamos o tipo e o ID exato!
                 className={`pet-item ${activeProfile.type === "pet" && activeProfile.id === pet.pet_id ? "pet-active" : ""}`}
                 onClick={() => {
                   setActiveProfile({ type: 'pet', id: pet.pet_id });
