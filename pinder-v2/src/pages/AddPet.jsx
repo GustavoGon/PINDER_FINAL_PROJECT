@@ -198,7 +198,6 @@ export default function AddPet() {
             </div>
 
             {/* AUTOCOMPLETE DA ESPÉCIE */}
-            {/* zIndex 1002 garante que a lista de espécies passa por cima da caixa de raças */}
             <div className="input-group" style={{ zIndex: showSpeciesList ? 1002 : 1 }}>
               <label>Espécie</label>
               <div className="autocomplete-container">

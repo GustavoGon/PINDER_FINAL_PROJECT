@@ -5,7 +5,7 @@ import { useActiveProfile } from "../contexts/ActiveProfileContext";
 
 export default function PetSelectionPopup({ onClose }) {
   const [pets, setPets] = useState([]);
-  const [tutorData, setTutorData] = useState(null); // 👈 Novo estado para guardar a foto do Tutor
+  const [tutorData, setTutorData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
@@ -62,7 +62,6 @@ export default function PetSelectionPopup({ onClose }) {
             style={{ borderBottom: "2px dashed #D6CEC3", paddingBottom: "15px", marginBottom: "5px" }}
           >
             <img
-              // 👇 Mostra a foto da BD. Se não tiver, usa o Placeholder (igual aos pets!)
               src={tutorData?.photo || "https://placehold.co/400x400/eeeeee/999999?text=Sem+Foto"}
               alt="Avatar do Tutor"
               className="pet-popup-avatar"

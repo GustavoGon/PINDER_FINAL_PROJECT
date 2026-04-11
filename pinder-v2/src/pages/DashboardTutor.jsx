@@ -227,9 +227,6 @@ export default function DashboardTutor() {
     return new Date(dateString).toISOString().split('T')[0];
   };
 
-  // =========================================================================
-  // 👇 ESTILOS DE CORREÇÃO (O "SEGREDO" PARA OS CAMPOS NÃO SE SOBREPOREM) 👇
-  // =========================================================================
   const inputStyle = {
     width: '100%',
     padding: '12px',
@@ -479,7 +476,7 @@ export default function DashboardTutor() {
         </div>
       </main>
 
-      {/* 👇 NAVBAR CORRIGIDA E FIXA AO FUNDO DO ECRÃ 👇 */}
+      {/*NAVBAR CORRIGIDA E FIXA AO FUNDO DO ECRÃ */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', zIndex: 9999 }}>
         <BottomNav activePage="perfil" />
       </div>

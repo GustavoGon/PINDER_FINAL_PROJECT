@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext } from 'react';
-import './css/Loading.css'; // CSS para o ecrã de carregamento global
+import './css/Loading.css';
 
 // Cria o contexto
 const LoadingContext = createContext();
