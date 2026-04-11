@@ -8,24 +8,26 @@ exports.getPets = async (req, res) => {
   res.json(pets);
 };
 
-// POST /pets 
-/*
-exports.createPet = async (req, res) => {
-  const { name, user_id, species_id, breed_id } = req.body;
+// GET /pets/:id
+exports.getPetById = async (req, res) => {
+  try {
+    const { pet_id } = req.params;
+    const pet = await prisma.pet.findUnique({
+      where: { pet_id: pet_id },
+      include: { breed: true, species: true, photos: true } // Traz a raça, espécie e fotos do pet
+    });
 
-  const pet = await prisma.pet.create({
-    data: {
-      name,
-      user_id,
-      species_id,
-      breed_id,
-    },
-  });
+    if (!pet) {
+      return res.status(404).json({ error: "Pet não encontrado" });
+    }
 
-  res.status(201).json(pet);
-};
-*/
+    res.json(pet);
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao procurar pet" });
+  }
+}
 
+// GET /pets/user/:id
 exports.getPetsByUser = async (req, res) => {
   try {
     const userId = req.params.id; 
@@ -79,4 +81,57 @@ exports.createPet = async (req, res) => {
     console.error("Erro ao criar pet:", error);
     res.status(500).json({ error: "Não foi possível criar o pet." });
   }
+};
+
+// PUT /pets/:pet_id
+exports.updatePet = async (req, res) => {
+  try {
+    const { pet_id } = req.params;
+    const { 
+      name, dob, gender, size, energy, description, forAdoption, 
+      new_gallery_photos, deleted_photo_ids // <--- O array de fotos extra que vem do frontend
+    } = req.body;
+
+    // 1. Atualizar os dados normais do pet
+    const updatedPet = await prisma.pet.update({
+      where: { pet_id: pet_id },
+      data: {
+        name, dob, gender, size, energy, description, forAdoption
+      }
+    });
+
+    // 2. Se vieram fotos extra na galeria, guardamos na tabela PetPhoto!
+    if (new_gallery_photos && new_gallery_photos.length > 0) {
+      // Descobrir qual é o último número de foto para não sobrepor
+      const count = await prisma.petPhoto.count({ where: { pet_id } });
+      
+      let currentPhotoNr = count + 1;
+
+      // Percorre o array e guarda cada foto na tabela
+      for (const photoData of new_gallery_photos) {
+        await prisma.petPhoto.create({
+          data: {
+            pet_id: pet_id,
+            url: photoData, // Guarda a base64 (ou lógica de upload para S3/Cloudinary)
+            photo_nr: currentPhotoNr
+          }
+        });
+        currentPhotoNr++;
+      }
+    }
+  if (deleted_photo_ids && deleted_photo_ids.length > 0) {
+      await prisma.petPhoto.deleteMany({
+        where: {
+          photo_id: { in: deleted_photo_ids } // Deleta todas as fotos cujo ID esteja no array de IDs a deletar
+        }
+      });
+    }
+
+    res.json({ message: "Pet atualizado com sucesso!", pet: updatedPet });
+
+  } catch (error) {
+    console.error("Erro ao atualizar pet:", error);
+    res.status(500).json({ error: "Erro ao atualizar dados do pet." });
+  }
+  
 };
