@@ -24,11 +24,23 @@ app.use("/pets", petRoutes);
 app.use("/interactions", interactionRoutes);
 app.use("/matches", matchRoutes);
 app.use("/messages", messageRoutes);
+app.use("/uploads", express.static("uploads"));
 
 // Rota de teste inicial
 app.get("/", (req, res) => {
   res.status(200).send({ message: "Pinder API is running! 🚀" });
 });
+
+async function testConnection() {
+  try {
+    const result = await prisma.$queryRaw`SELECT 1`;
+    console.log("✅ DB connected:", result);
+  } catch (error) {
+    console.error("❌ DB connection failed:", error);
+  }
+}
+
+testConnection();
 
 // --- Exportação ---
 const PORT = process.env.PORT || 3000;
