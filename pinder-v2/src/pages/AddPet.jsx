@@ -31,7 +31,7 @@ export default function AddPet() {
   const [size, setSize] = useState('');
   const [energy, setEnergy] = useState(3);
   const [description, setDescription] = useState('');
-  const [isAdoptable, setIsAdoptable] = useState(false);
+  const [forAdoption, setForAdoption] = useState(false);
   
   const [photoPreview, setPhotoPreview] = useState("https://images.unsplash.com/photo-1543466835-00a7907e9de1?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80");
   const [photoData, setPhotoData] = useState(null);
@@ -131,7 +131,7 @@ export default function AddPet() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name, user_id: user.user_id, species_id: speciesId, breed_id: breedId,
-          dob, gender, size, energy, description, isAdoptable, photoData 
+          dob, gender, size, energy, description, forAdoption, photoData 
         }),
       });
 
@@ -340,7 +340,7 @@ export default function AddPet() {
               <p>Ative esta opção se procura uma nova família para este pet.</p>
             </div>
             <label className="switch">
-              <input type="checkbox" checked={isAdoptable} onChange={(e) => setIsAdoptable(e.target.checked)} />
+              <input type="checkbox" checked={forAdoption} onChange={(e) => setForAdoption(e.target.checked)} />
               <span className="slider round"></span>
             </label>
           </div>

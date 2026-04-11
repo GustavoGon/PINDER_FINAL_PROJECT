@@ -14,7 +14,8 @@ const app = express();
 
 // --- Middlewares ---
 app.use(cors()); // Permite que o seu front-end acesse a API
-app.use(express.json()); // Permite que o app entenda corpo de requisição em JSON
+app.use(express.json({ limit: '50mb' })); // Permite que o app entenda corpo de requisição em JSON e aumenta o limite para uploads de fotos
+app.use(express.urlencoded({ limit: '50mb', extended: true }));  // Permite que o app entenda dados de formulário (para uploads de fotos)
 
 // --- Rotas ---
 app.use("/users", userRoutes);

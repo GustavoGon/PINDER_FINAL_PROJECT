@@ -8,7 +8,8 @@ exports.getPets = async (req, res) => {
   res.json(pets);
 };
 
-// POST /pets
+// POST /pets 
+/*
 exports.createPet = async (req, res) => {
   const { name, user_id, species_id, breed_id } = req.body;
 
@@ -23,6 +24,7 @@ exports.createPet = async (req, res) => {
 
   res.status(201).json(pet);
 };
+*/
 
 exports.getPetsByUser = async (req, res) => {
   try {
@@ -49,7 +51,7 @@ exports.createPet = async (req, res) => {
     // 1. Recebemos TODOS os campos que vêm do frontend
     const { 
       name, user_id, species_id, breed_id, 
-      dob, gender, size, energy, description, isAdoptable, 
+      dob, gender, size, energy, description, forAdoption, 
       photoData
     } = req.body;
 
@@ -67,19 +69,10 @@ exports.createPet = async (req, res) => {
         size,
         energy: parseInt(energy), // Garantir que a energia é um número
         description,
-        isAdoptable
+        forAdoption,
+        main_photo: photoData || null // Guardar a foto principal diretamente na tabela pet (para facilitar consultas)
       },
     });
-
-    // 3. Se o utilizador tiver escolhido uma foto, guardamos na tabela pet_photos
-    if (photoData) {
-      await prisma.petPhoto.create({
-        data: {
-          pet_id: pet.pet_id, 
-          url: photoData   
-        }
-      });
-    }
 
     res.status(201).json(pet);
   } catch (error) {

@@ -127,11 +127,9 @@ export default function PetSelectionPopup({
                 onClick={() => handleSelectPet(pet.id)}
               >
                 <img
-                  // Alterado para ler pet.photos em vez de pet.pet_photos
                   src={
-                    pet.photos && pet.photos.length > 0
-                      ? pet.photos[0].url
-                      : "https://images.unsplash.com/photo-1517849845537-4d257902454a?ixlib=rb-4.0.3&w=100&q=80"
+                    pet.main_photo ||
+                    "https://placehold.co/400x400/eeeeee/999999?text=Sem+Foto"
                   }
                   alt={pet.name}
                   className="pet-popup-avatar"

@@ -53,6 +53,7 @@ model Pet {
   main_photo   String?
   gender       String?
   dob          DateTime?
+  size         String?
   height       Float?
   weight       Float?
   energy       Int?
