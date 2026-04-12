@@ -14,7 +14,8 @@ const distritosPortugal = [
 
 export default function DashboardTutor() {
   const navigate = useNavigate();
-  const { activeProfile } = useActiveProfile();
+const { activeProfile, setActiveProfile } = useActiveProfile();
+const [showDeleteModal, setShowDeleteModal] = useState(false);
   
   const [profileData, setProfileData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,6 +38,7 @@ export default function DashboardTutor() {
   const [breedSearch, setBreedSearch] = useState('');
   const [showLocationList, setShowLocationList] = useState(false);
   const [locationSearch, setLocationSearch] = useState('');
+
 
   const filteredDistritos = distritosPortugal.filter(distrito => 
     distrito.toLowerCase().includes(locationSearch.toLowerCase())
@@ -162,7 +164,7 @@ export default function DashboardTutor() {
           username: profileData.name, 
           dob: profileData.dob ? new Date(profileData.dob).toISOString() : null,
           location: profileData.location, 
-          photo: newAvatarPhoto 
+          photo: newAvatarPhoto || profileData.photo 
         };
 
         const response = await fetch(`${import.meta.env.VITE_API_URL}/users/${activeProfile.id}`, {
@@ -194,7 +196,7 @@ export default function DashboardTutor() {
           forAdoption: profileData.forAdoption,
           species_id: speciesId, 
           breed_id: breedId,     
-          main_photo: newAvatarPhoto, 
+          main_photo: newAvatarPhoto || profileData.main_photo, 
           new_gallery_photos: newExtraPhotos, 
           deleted_photo_ids: photosToDelete 
         };
@@ -214,6 +216,30 @@ export default function DashboardTutor() {
         } else {
           setSaveMessage('Erro ao atualizar o pet.');
         }
+      }
+    } catch (error) {
+      setSaveMessage('Erro de ligação ao servidor.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const confirmDeletePet = async () => {
+    setShowDeleteModal(false); // Fecha o modal primeiro
+    setIsSaving(true);
+    setSaveMessage('');
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/pets/${activeProfile.id}`, {
+        method: 'DELETE', 
+      });
+
+      if (response.ok) {
+        // Redireciona o utilizador de volta para o próprio perfil sem alertas feios!
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        setActiveProfile({ type: 'tutor', id: user.user_id || user.id });
+      } else {
+        setSaveMessage('Erro ao apagar o pet.');
       }
     } catch (error) {
       setSaveMessage('Erro de ligação ao servidor.');
@@ -264,6 +290,32 @@ export default function DashboardTutor() {
 
   return (
     <div className="profile-container" style={{ backgroundColor: '#F5F2EB', minHeight: '100vh', paddingBottom: '100px', boxSizing: 'border-box' }}>
+      {showDeleteModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '20px', padding: '25px', width: '100%', maxWidth: '340px', textAlign: 'center', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', animation: 'fadeIn 0.3s ease' }}>
+            
+            <div style={{ width: '60px', height: '60px', borderRadius: '50%', backgroundColor: '#ffe6e6', color: '#ff4d4d', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px', fontSize: '24px' }}>
+              <FaTimes />
+            </div>
+            
+            <h3 style={{ margin: '0 0 10px', color: '#333', fontSize: '20px' }}>Apagar Pet?</h3>
+            
+            <p style={{ margin: '0 0 25px', color: '#666', fontSize: '14px', lineHeight: '1.5' }}>
+              Tens a certeza que queres apagar este pet? Todas as fotos e dados serão perdidos. <b>Esta ação não pode ser desfeita!</b>
+            </p>
+            
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button onClick={() => setShowDeleteModal(false)} style={{ flex: 1, padding: '14px', borderRadius: '30px', backgroundColor: '#f0f0f0', color: '#333', border: 'none', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              <button onClick={confirmDeletePet} style={{ flex: 1, padding: '14px', borderRadius: '30px', backgroundColor: '#ff4d4d', color: 'white', border: 'none', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
+                Sim, Apagar
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
       
       {selectedPhoto && (
         <div onClick={() => setSelectedPhoto(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -469,10 +521,22 @@ export default function DashboardTutor() {
           </div>
         )}
 
-        <div className="profile-actions" style={{ marginTop: '20px' }}>
+   <div className="profile-actions" style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px', boxSizing: 'border-box', width: '100%' }}>
+          
           <button className="btn-save" onClick={handleSave} disabled={isSaving} style={{ width: '100%', padding: '15px', borderRadius: '30px', backgroundColor: '#5C4A3D', color: 'white', border: 'none', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', boxSizing: 'border-box' }}>
             {isSaving ? 'A guardar...' : 'Salvar Alterações'}
           </button>
+
+          {activeProfile.type === 'pet' && (
+            <button 
+              onClick={() => setShowDeleteModal(true)} 
+              disabled={isSaving} 
+              style={{ width: '100%', padding: '15px', borderRadius: '30px', backgroundColor: 'transparent', color: '#ff4d4d', border: '2px solid #ff4d4d', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', boxSizing: 'border-box' }}
+            >
+              Apagar Pet
+            </button>
+          )}
+
         </div>
       </main>
 

@@ -137,3 +137,23 @@ exports.updatePet = async (req, res) => {
     res.status(500).json({ error: "Erro ao atualizar dados do pet." });
   }
 };
+
+exports.deletePet = async (req, res) => {
+  try {
+    const { pet_id } = req.params;
+
+    await prisma.petPhoto.deleteMany({
+      where: { pet_id: pet_id }
+    });
+
+    // 2º Passo: Apagar o Pet
+    await prisma.pet.delete({
+      where: { pet_id: pet_id }
+    });
+
+    res.status(200).json({ message: "Pet apagado com sucesso!" });
+  } catch (error) {
+    console.error("Erro ao apagar pet:", error);
+    res.status(500).json({ error: "Erro interno ao apagar pet." });
+  }
+};

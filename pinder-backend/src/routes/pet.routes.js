@@ -25,4 +25,7 @@ router.post("/upload", upload.single("photo"), async (req, res) => {
 // Rota para atualizar um pet existente
 router.put("/:pet_id", petController.updatePet);
 
+// Rota para deletar um pet
+router.delete('/:pet_id', petController.deletePet);
+
 module.exports = router;
