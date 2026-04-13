@@ -219,6 +219,7 @@ const [showDeleteModal, setShowDeleteModal] = useState(false);
       }
     } catch (error) {
       setSaveMessage('Erro de ligação ao servidor.');
+      console.log(error)  
     } finally {
       setIsSaving(false);
     }
@@ -243,6 +244,7 @@ const [showDeleteModal, setShowDeleteModal] = useState(false);
       }
     } catch (error) {
       setSaveMessage('Erro de ligação ao servidor.');
+      console.log(error)
     } finally {
       setIsSaving(false);
     }

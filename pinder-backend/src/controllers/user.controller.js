@@ -71,6 +71,7 @@ exports.createUser = async (req, res) => {
 
 // POST /users/login
 exports.loginUser = async (req, res) => {
+  console.log("DADOS RECEBIDOS DO MOBILE:", req.body);
   try {
     const { email, password } = req.body;
 
