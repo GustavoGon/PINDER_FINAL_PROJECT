@@ -45,6 +45,7 @@ export default function DashboardTutor() {
   const [breedSearch, setBreedSearch] = useState('');
   const [showLocationList, setShowLocationList] = useState(false);
   const [locationSearch, setLocationSearch] = useState('');
+  const [speciesSearch, setSpeciesSearch] = useState('');
   const [showSpeciesList, setShowSpeciesList] = useState(false);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -75,6 +76,13 @@ const onDateChange = (event: any, selectedDate?: Date) => {
   useEffect(() => {
     const fetchProfile = async () => {
       setIsLoading(true);
+      setProfileData(null);
+      setSpeciesId('');
+      setBreedId('');
+      setSpeciesSearch('');
+      setBreedSearch('');
+      setLocationSearch('');
+      
       setSaveMessage('');
       setNewExtraPhotos([]); 
       setPhotosToDelete([]); 

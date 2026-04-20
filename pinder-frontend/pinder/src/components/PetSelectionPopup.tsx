@@ -37,7 +37,13 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
     if (!visible) return;
 
     const fetchDados = async () => {
+      // 🧹 A MAGIA ESTÁ AQUI: Limpar os dados antigos antes de começar!
       setIsLoading(true);
+      setError(null);
+      setTutorData(null);
+      setPets([]);
+      setUser({});
+
       try {
         // 1. Vai buscar o utilizador à memória do telemóvel primeiro
         const userStr = await AsyncStorage.getItem("user");
@@ -169,7 +175,7 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
             style={styles.btnAdd} 
             onPress={() => {
               onClose();
-              router.push("/addPet"); // Ajusta a rota para o teu ecrã de criar pet
+              router.push("/addPet"); 
             }}
           >
             <Text style={styles.btnAddText}>Adicionar Novo Pet</Text>
@@ -186,7 +192,7 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center', // Centra o popup no meio do ecrã
+    justifyContent: 'center', 
     alignItems: 'center',
     padding: 20,
   },
@@ -224,7 +230,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   listContainer: {
-    maxHeight: 300, // Impede que o popup fique gigante se houver 20 pets
+    maxHeight: 300, 
   },
   petItem: {
     flexDirection: 'row',
