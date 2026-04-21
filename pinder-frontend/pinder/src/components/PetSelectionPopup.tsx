@@ -33,11 +33,9 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
 
   useEffect(() => {
-    // Só fazemos o fetch se o popup estiver aberto!
     if (!visible) return;
 
     const fetchDados = async () => {
-      // 🧹 A MAGIA ESTÁ AQUI: Limpar os dados antigos antes de começar!
       setIsLoading(true);
       setError(null);
       setTutorData(null);
