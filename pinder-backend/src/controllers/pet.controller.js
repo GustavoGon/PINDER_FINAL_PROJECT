@@ -160,21 +160,51 @@ exports.deletePet = async (req, res) => {
 // GET /pets/feed (Esta função vai buscar apenas 10 pets, super rápido!)
 exports.getFeedPets = async (req, res) => {
   try {
-    const { excludeUserId, forAdoption } = req.query;
+    const { excludeUserId, forAdoption, userId } = req.query;
 
+    // 1️⃣ Se userId está presente, procurar pets já vistos (menos de 7 dias)
+    let excludePetIds = [];
+    
+    if (userId) {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 dias atrás
+      
+      // Procurar todas as interactions do utilizador (do seu pet)
+      const userPet = await prisma.pet.findFirst({
+        where: { user_id: userId }
+      });
+
+      if (userPet) {
+        const recentInteractions = await prisma.interaction.findMany({
+          where: {
+            pet_id: userPet.pet_id,
+            timestamp: {
+              gte: sevenDaysAgo // Apenas interações dos últimos 7 dias
+            }
+          },
+          select: { target_pet_id: true }
+        });
+
+        excludePetIds = recentInteractions.map(i => i.target_pet_id);
+      }
+    }
+
+    // 2️⃣ Buscar pets com os filtros aplicados
     const pets = await prisma.pet.findMany({
-      take: 10, // O LIMITE QUE PEDISTE! Traz apenas 10 pets de cada vez.
+      take: 10,
       where: {
         user_id: excludeUserId ? { not: excludeUserId } : undefined,
         forAdoption: forAdoption === 'true' ? true : undefined,
+        pet_id: excludePetIds.length > 0 ? { notIn: excludePetIds } : undefined, // Excluir pets já vistos (últimos 7 dias)
       },
       include: {
-        // Usa "owner" como já tens no teu getPets original
         owner: {
-          select: { username: true, photo: true, location: true } // Traz só o essencial, poupa memória
+          select: { username: true, photo: true, location: true }
         },
         breed: {
           select: { name: true }
+        },
+        photos: { // Trazer também as fotos adicionais
+          select: { url: true }
         }
       }
     });

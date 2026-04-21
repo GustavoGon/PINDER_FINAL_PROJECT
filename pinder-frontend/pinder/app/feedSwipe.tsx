@@ -26,6 +26,7 @@ export default function FeedSwipe() {
   const { activeProfile } = useActiveProfile(); 
   const [pets, setPets] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [myPetId, setMyPetId] = useState<string | null>(null); // 🆕 Guardar o pet_id do utilizador
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
@@ -51,11 +52,20 @@ export default function FeedSwipe() {
         const currentUser = userStr ? JSON.parse(userStr) : {};
         const myUserId = currentUser.user_id || currentUser.id;
 
+        // 🆕 PROCURAR O PET DO UTILIZADOR PARA OBTER O pet_id
+        const userPetsResponse = await fetch(`${API_URL}/pets/user/${myUserId}`);
+        if (userPetsResponse.ok) {
+          const userPets = await userPetsResponse.json();
+          if (userPets.length > 0) {
+            setMyPetId(userPets[0].pet_id); // Guardar o primeiro pet do utilizador
+          }
+        }
+
         const isForAdoption = activeProfile.type === 'tutor' ? 'true' : 'false';
 
-        console.log(`A fazer fetch para: ${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}`);
+        console.log(`A fazer fetch para: ${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}&userId=${myUserId}`);
 
-        const response = await fetch(`${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}`);
+        const response = await fetch(`${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}&userId=${myUserId}`);
         
         if (response.ok) {
           const feedPets = await response.json();
@@ -113,6 +123,20 @@ export default function FeedSwipe() {
 
   const onSwipeComplete = async (direction: 'right' | 'left') => {
     const swipedPet = pets[currentIndex];
+    
+    // Verificar se o pet existe antes de continuar
+    if (!swipedPet) {
+      console.warn("Pet não encontrado no índice:", currentIndex);
+      setCurrentIndex((prev) => prev + 1);
+      return;
+    }
+
+    // ✅ VERIFICAR SE TEM myPetId VÁLIDO
+    if (!myPetId) {
+      console.warn("Utilizador não tem pet configurado");
+      return;
+    }
+    
     const isLike = direction === 'right';
 
     try {
@@ -120,8 +144,7 @@ export default function FeedSwipe() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pet_id: activeProfile.id, 
-          active_profile_type: activeProfile.type, 
+          pet_id: myPetId, // ✅ CORRIGIDO: usar myPetId em vez de activeProfile.id
           target_pet_id: swipedPet.pet_id,
           like_dislike: isLike
         })
