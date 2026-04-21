@@ -4,7 +4,7 @@ exports.createInteraction = async (req, res) => {
   try {
     const { pet_id, target_pet_id, like_dislike } = req.body;
 
-    // 1️⃣ Create interaction
+    // Create interaction
     const interaction = await prisma.interaction.create({
       data: {
         pet_id,
@@ -13,7 +13,7 @@ exports.createInteraction = async (req, res) => {
       },
     });
 
-    // 2️⃣ Only check match if it's a LIKE
+    // Only check match if it's a LIKE
     if (like_dislike) {
       // Check if reverse like exists
       const reverse = await prisma.interaction.findFirst({
@@ -25,7 +25,7 @@ exports.createInteraction = async (req, res) => {
       });
 
       if (reverse) {
-        // 3️⃣ Check if match already exists (avoid duplicates)
+        // Check if match already exists (avoid duplicates)
         const existingMatch = await prisma.match.findFirst({
           where: {
             OR: [
@@ -35,13 +35,17 @@ exports.createInteraction = async (req, res) => {
           },
         });
 
-        // 4️⃣ Create match if not exists
+        // Create match if not exists
         if (!existingMatch) {
           const match = await prisma.match.create({
             data: {
               pet_1_id: pet_id,
               pet_2_id: target_pet_id,
             },
+            include: {
+              pet1: { include: { owner: true } },
+              pet2: { include: { owner: true } }
+            }
           });
 
           return res.status(201).json({
@@ -52,7 +56,7 @@ exports.createInteraction = async (req, res) => {
       }
     }
 
-    // 5️⃣ Default response
+    // Default response
     res.status(201).json({
       message: "Interaction recorded",
       interaction,

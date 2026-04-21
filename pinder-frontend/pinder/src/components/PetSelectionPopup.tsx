@@ -113,7 +113,9 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
                 activeProfile.type === "tutor" && styles.petActive
               ]}
               onPress={() => {
-                setActiveProfile({ type: 'tutor', id: user.user_id || user.id });
+                const tutorId = user.user_id || user.id;
+                console.log(`🔀 [PetSelectionPopup] Selecionando tutor: user_id=${user.user_id}, id=${user.id}, final_id=${tutorId}`);
+                setActiveProfile({ type: 'tutor', id: tutorId });
                 onClose();
               }}
             >

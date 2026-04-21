@@ -75,6 +75,14 @@ const onDateChange = (event: any, selectedDate?: Date) => {
 
   useEffect(() => {
     const fetchProfile = async () => {
+
+      if (!activeProfile?.id) {
+        console.log("❌ activeProfile.id é null/undefined, não fazendo fetch");
+        setIsLoading(false);
+        setProfileData(null);
+        return;
+      }
+
       setIsLoading(true);
       setProfileData(null);
       setSpeciesId('');
@@ -97,33 +105,43 @@ const onDateChange = (event: any, selectedDate?: Date) => {
         }
 
         if (activeProfile.type === 'tutor') {
-          const response = await fetch(`${API_URL}/users/${activeProfile.id}`);
+          const userStr = await AsyncStorage.getItem('user');
+          const userFromStorage = userStr ? JSON.parse(userStr) : {};
+          const correctUserId = userFromStorage.user_id || userFromStorage.id;
+          
+          const userIdToFetch = activeProfile.id === correctUserId ? activeProfile.id : correctUserId;
+          
+          console.log(`🧑 Buscando perfil tutor: activeProfile.id=${activeProfile.id}, correctUserId=${correctUserId}, useFetch=${userIdToFetch}`);
+          
+          const response = await fetch(`${API_URL}/users/${userIdToFetch}`);
           if (response.ok) {
             const data = await response.json();
+            console.log(`✅ Perfil tutor carregado:`, data.username);
             setProfileData({ ...data, name: data.username });
           } else {
-            const userStr = await AsyncStorage.getItem('user');
-            const user = userStr ? JSON.parse(userStr) : {};
-            setProfileData({ ...user, name: user.username }); 
+            console.warn(`⚠️ Erro ao buscar /users/${userIdToFetch}`);
+            setProfileData({ ...userFromStorage, name: userFromStorage.username }); 
           }
         } else if (activeProfile.type === 'pet' && activeProfile.id) {
+          console.log(`🐾 Buscando perfil pet: /pets/${activeProfile.id}`);
           const response = await fetch(`${API_URL}/pets/${activeProfile.id}`);
           if (response.ok) {
             const data = await response.json();
+            console.log(`✅ Perfil pet carregado:`, data.name);
             setProfileData(data);
             setSpeciesId(data.species_id || '');
             setBreedId(data.breed_id || '');
           }
         }
       } catch (error) {
-        console.error("Erro ao carregar perfil:", error);
+        console.error("❌ Erro ao carregar perfil:", error);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchProfile();
-  }, [activeProfile, refreshTrigger]);
+  }, [activeProfile?.id, activeProfile?.type, refreshTrigger]);
 
   useEffect(() => {
     if (speciesId) {

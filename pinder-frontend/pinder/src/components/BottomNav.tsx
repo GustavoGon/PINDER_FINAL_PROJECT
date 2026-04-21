@@ -4,16 +4,21 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
 import PetSelectionPopup from './PetSelectionPopup';
+import { useActiveProfile } from '../contexts/ActiveProfileContext';
 
 interface BottomNavProps {
-  activePage: 'home' | 'groups' | 'chat' | 'profile';
+  activePage: 'home' | 'groups' | 'chat' | 'matches' | 'profile';
 }
 
 export default function BottomNav({ activePage }: BottomNavProps) {
   const router = useRouter();
+  const { activeProfile } = useActiveProfile();
   
   // 2. O estado que controla se o popup está aberto ou fechado
   const [showPopup, setShowPopup] = useState(false);
+  
+  // Mostrar matches apenas se o utilizador tem um pet ativo (não é tutor)
+  const isPetUser = activeProfile?.type !== 'tutor';
 
   const navigateTo = (route: string) => {
     router.replace(route as any);
@@ -42,6 +47,13 @@ export default function BottomNav({ activePage }: BottomNavProps) {
           <FontAwesome5 name="comments" size={24} color={activePage === 'chat' ? '#5C4A3D' : '#B0A8A0'} solid={activePage === 'chat'} />
           <Text style={[styles.navText, activePage === 'chat' && styles.activeText]}>Chat</Text>
         </TouchableOpacity>
+
+        {isPetUser && (
+          <TouchableOpacity style={styles.navItem} onPress={() => navigateTo('/matches')}>
+            <FontAwesome5 name="heart" size={24} color={activePage === 'matches' ? '#5C4A3D' : '#B0A8A0'} solid={activePage === 'matches'} />
+            <Text style={[styles.navText, activePage === 'matches' && styles.activeText]}>Matches</Text>
+          </TouchableOpacity>
+        )}
 
         {/* 3. BOTÃO PERFIL ATUALIZADO */}
         <TouchableOpacity 

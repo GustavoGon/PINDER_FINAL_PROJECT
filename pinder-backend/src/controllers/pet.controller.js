@@ -160,15 +160,16 @@ exports.deletePet = async (req, res) => {
 // GET /pets/feed (Esta função vai buscar apenas 10 pets, super rápido!)
 exports.getFeedPets = async (req, res) => {
   try {
-    const { excludeUserId, forAdoption, userId } = req.query;
+    const { excludeUserId, forAdoption, userId, skip = 0 } = req.query;
+    const skipNumber = parseInt(skip) || 0;
 
-    // 1️⃣ Se userId está presente, procurar pets já vistos (menos de 7 dias)
+    // Se userId está presente, procurar pets já vistos (menos de 7 dias)
     let excludePetIds = [];
     
     if (userId) {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 dias atrás
       
-      // Procurar todas as interactions do utilizador (do seu pet)
+      // Procurar todas as interactions do utilizador
       const userPet = await prisma.pet.findFirst({
         where: { user_id: userId }
       });
@@ -188,9 +189,10 @@ exports.getFeedPets = async (req, res) => {
       }
     }
 
-    // 2️⃣ Buscar pets com os filtros aplicados
+    // Buscar pets com os filtros aplicados e paginação
     const pets = await prisma.pet.findMany({
       take: 10,
+      skip: skipNumber,
       where: {
         user_id: excludeUserId ? { not: excludeUserId } : undefined,
         forAdoption: forAdoption === 'true' ? true : undefined,
@@ -203,7 +205,7 @@ exports.getFeedPets = async (req, res) => {
         breed: {
           select: { name: true }
         },
-        photos: { // Trazer também as fotos adicionais
+        photos: { 
           select: { url: true }
         }
       }

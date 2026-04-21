@@ -19,11 +19,16 @@ export function ActiveProfileProvider({ children }: { children: React.ReactNode 
         // Usa o user_id 
         const currentId = user.user_id || user.id;
         
+        console.log(`🔄 [Context] Carregando user: user_id=${user.user_id}, id=${user.id}, final_id=${currentId}`);
+        
         if (currentId) {
           setActiveProfile({ type: 'tutor', id: currentId });
+          console.log(`✅ [Context] activeProfile atualizado: { type: 'tutor', id: ${currentId} }`);
+        } else {
+          console.warn(`⚠️ [Context] Nenhum user_id encontrado`);
         }
       } catch (error) {
-        console.error("Erro ao carregar o utilizador da memória:", error);
+        console.error("❌ [Context] Erro ao carregar o utilizador da memória:", error);
       }
     };
 

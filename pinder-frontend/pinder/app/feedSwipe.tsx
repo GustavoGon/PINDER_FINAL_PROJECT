@@ -4,8 +4,10 @@ import {
   Animated, PanResponder, Dimensions, ActivityIndicator, ScrollView 
 } from 'react-native';
 import { FontAwesome5, MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomNav from '../src/components/BottomNav';
+import MatchModal from '../src/components/MatchModal';
 import { useActiveProfile } from '../src/contexts/ActiveProfileContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -23,10 +25,14 @@ const AdoptionBadge = ({ isForAdoption }: { isForAdoption: boolean }) => (
 );
 
 export default function FeedSwipe() {
+  const router = useRouter();
   const { activeProfile } = useActiveProfile(); 
   const [pets, setPets] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [myPetId, setMyPetId] = useState<string | null>(null); // 🆕 Guardar o pet_id do utilizador
+  const [myPetId, setMyPetId] = useState<string | null>(null);
+  const [matchedPet, setMatchedPet] = useState<any>(null);
+  const [showMatchModal, setShowMatchModal] = useState(false);
+  const [skip, setSkip] = useState(0); // 🆕 Controlar paginação
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
@@ -37,7 +43,7 @@ export default function FeedSwipe() {
 
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000'; 
 
-  // --- 1. CARREGAR E FILTRAR OS PETS (OTIMIZADO) ---
+  // --- 1. CARREGAR E FILTRAR OS PETS ---
  useEffect(() => {
     const fetchFeed = async () => {
       // Se ainda não temos o perfil ativo, paramos o loading para não ficar preso
@@ -52,7 +58,7 @@ export default function FeedSwipe() {
         const currentUser = userStr ? JSON.parse(userStr) : {};
         const myUserId = currentUser.user_id || currentUser.id;
 
-        // 🆕 PROCURAR O PET DO UTILIZADOR PARA OBTER O pet_id
+        // PROCURAR O PET DO UTILIZADOR PARA OBTER O pet_id
         const userPetsResponse = await fetch(`${API_URL}/pets/user/${myUserId}`);
         if (userPetsResponse.ok) {
           const userPets = await userPetsResponse.json();
@@ -63,14 +69,17 @@ export default function FeedSwipe() {
 
         const isForAdoption = activeProfile.type === 'tutor' ? 'true' : 'false';
 
-        console.log(`A fazer fetch para: ${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}&userId=${myUserId}`);
+        console.log(`A fazer fetch para: ${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}&userId=${myUserId}&skip=0`);
 
-        const response = await fetch(`${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}&userId=${myUserId}`);
+        const response = await fetch(
+          `${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}&userId=${myUserId}&skip=0`
+        );
         
         if (response.ok) {
           const feedPets = await response.json();
           setPets(feedPets);
-          setCurrentIndex(0); 
+          setCurrentIndex(0);
+          setSkip(10);
         } else {
           console.error("Erro do servidor:", await response.text());
         }
@@ -93,6 +102,50 @@ export default function FeedSwipe() {
     if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
     if (age === 0) return "Menos de 1 ano";
     return age === 1 ? "1 ano" : `${age} anos`;
+  };
+
+  // --- 2. CARREGAR MAIS PETS QUANDO PRÓXIMO DO FINAL---
+  useEffect(() => {
+    // Carregar mais pets quando está perto do final (2 cards antes do fim)
+    if (currentIndex >= pets.length - 2 && pets.length > 0 && !isLoading) {
+      loadMorePets();
+    }
+  }, [currentIndex, pets.length]);
+
+  const loadMorePets = async () => {
+    try {
+      const userStr = await AsyncStorage.getItem('user');
+      const currentUser = userStr ? JSON.parse(userStr) : {};
+      const myUserId = currentUser.user_id || currentUser.id;
+
+      const isForAdoption = activeProfile?.type === 'tutor' ? 'true' : 'false';
+
+      console.log(`📥 Carregando mais pets... (skip=${skip})`);
+
+      const response = await fetch(
+        `${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}&userId=${myUserId}&skip=${skip}`
+      );
+
+      if (response.ok) {
+        const morePets = await response.json();
+        // Concatenar os novos pets à lista existente e EVITAR DUPLICATAS
+        if (morePets.length > 0) {
+          setPets((prevPets) => {
+            // Filtrar pets que não estão já na lista
+            const existingIds = new Set(prevPets.map(p => p.pet_id));
+            const newPetsFiltered = morePets.filter(p => !existingIds.has(p.pet_id));
+            
+            console.log(`✅ Adicionados ${newPetsFiltered.length} novos pets (${morePets.length - newPetsFiltered.length} duplicatas removidas)`);
+            return [...prevPets, ...newPetsFiltered];
+          });
+          
+          // Incrementar o skip para o próximo fetch
+          setSkip((prevSkip) => prevSkip + 10);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar mais pets:', error);
+    }
   };
 
   // --- MOTOR DE SWIPE ---
@@ -131,7 +184,6 @@ export default function FeedSwipe() {
       return;
     }
 
-    // ✅ VERIFICAR SE TEM myPetId VÁLIDO
     if (!myPetId) {
       console.warn("Utilizador não tem pet configurado");
       return;
@@ -140,15 +192,24 @@ export default function FeedSwipe() {
     const isLike = direction === 'right';
 
     try {
-      await fetch(`${API_URL}/interactions`, {
+      const response = await fetch(`${API_URL}/interactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pet_id: myPetId, // ✅ CORRIGIDO: usar myPetId em vez de activeProfile.id
+          pet_id: myPetId,
           target_pet_id: swipedPet.pet_id,
           like_dislike: isLike
         })
       });
+
+      if (response.status === 201) {
+        // MATCH DETECTADO!
+        const data = await response.json();
+        if (data.message === "🎉 It's a match!") {
+          setMatchedPet(swipedPet);
+          setShowMatchModal(true);
+        }
+      }
     } catch (error) {
       console.error("Erro ao guardar interação:", error);
     }
@@ -157,6 +218,18 @@ export default function FeedSwipe() {
     setCurrentPhotoIndex(0); 
     if (isFlipped) handleFlip(true); 
     position.setValue({ x: 0, y: 0 });
+  };
+
+  const handleMatchModalClose = () => {
+    setShowMatchModal(false);
+    
+    // Se for tutor, ir para chat
+    if (activeProfile?.type === 'tutor') {
+      router.push('/chat');
+    } else {
+      // Se for pet, ir para matches
+      router.push('/matches');
+    }
   };
 
   const resetPosition = () => {
@@ -174,7 +247,6 @@ export default function FeedSwipe() {
   const frontInterpolate = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
   const backInterpolate = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '360deg'] });
 
-  // A MAGIA PARA CORRIGIR O BUG DO TEXTO NO ANDROID
   const frontOpacity = flipAnim.interpolate({
     inputRange: [0, 0.5, 0.51, 1],
     outputRange: [1, 1, 0, 0]
@@ -365,6 +437,14 @@ export default function FeedSwipe() {
 
         </Animated.View>
       </View>
+
+      <MatchModal
+        visible={showMatchModal}
+        petName={matchedPet?.name || ''}
+        petPhoto={matchedPet?.main_photo || ''}
+        onClose={handleMatchModalClose}
+        isTutor={activeProfile?.type === 'tutor'}
+      />
 
       <BottomNav activePage="home" />
     </View>
