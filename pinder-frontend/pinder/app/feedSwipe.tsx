@@ -36,45 +36,43 @@ export default function FeedSwipe() {
 
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000'; 
 
-  // --- 1. CARREGAR E FILTRAR OS PETS ---
-  useEffect(() => {
+  // --- 1. CARREGAR E FILTRAR OS PETS (OTIMIZADO) ---
+ useEffect(() => {
     const fetchFeed = async () => {
+      // Se ainda não temos o perfil ativo, paramos o loading para não ficar preso
+      if (!activeProfile || !activeProfile.id) {
+        setIsLoading(false);
+        return; 
+      }
+
       setIsLoading(true);
       try {
         const userStr = await AsyncStorage.getItem('user');
         const currentUser = userStr ? JSON.parse(userStr) : {};
         const myUserId = currentUser.user_id || currentUser.id;
 
-        const response = await fetch(`${API_URL}/pets`);
+        const isForAdoption = activeProfile.type === 'tutor' ? 'true' : 'false';
+
+        console.log(`A fazer fetch para: ${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}`);
+
+        const response = await fetch(`${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}`);
+        
         if (response.ok) {
-          const allPets = await response.json();
-          
-          const feedPets = allPets.filter((p: any) => {
-            // Nunca mostrar os próprios pets do utilizador
-            if (String(p.user_id) === String(myUserId)) return false;
-
-            // Filtro por Perfil Ativo
-            if (activeProfile.type === 'tutor') {
-              return p.forAdoption === true; 
-            } else {
-              return true; 
-            }
-          });
-
+          const feedPets = await response.json();
           setPets(feedPets);
           setCurrentIndex(0); 
+        } else {
+          console.error("Erro do servidor:", await response.text());
         }
       } catch (error) {
-        console.error("Erro ao carregar o feed:", error);
+        console.error("Erro de Rede (Verifica o teu IP!):", error);
       } finally {
-        setIsLoading(false);
+        setIsLoading(false); // Garante que desliga SEMPRE o loading no fim
       }
     };
 
-    if (activeProfile && activeProfile.id) {
-      fetchFeed();
-    }
-  }, [activeProfile.type, activeProfile.id]);
+    fetchFeed();
+  }, [activeProfile?.id, activeProfile?.type]);
 
   const calculateAge = (dobString: string) => {
     if (!dobString) return "Idade desconhecida";
@@ -201,9 +199,9 @@ export default function FeedSwipe() {
     ? currentPet.photos.map((p: any) => p.url) 
     : [currentPet?.main_photo || "https://placehold.co/400x600/eeeeee/999999?text=Sem+Foto"];
 
-  const tutorName = currentPet?.user?.username || currentPet?.user_name || 'Tutor';
-  const tutorPhoto = currentPet?.user?.photo || "https://placehold.co/100x100/eeeeee/999999?text=U";
-  const tutorLocation = currentPet?.user?.location || 'Localização não definida';
+  const tutorName = currentPet?.owner?.username || currentPet?.user_name || 'Tutor';
+  const tutorPhoto = currentPet?.owner?.photo || "https://placehold.co/100x100/eeeeee/999999?text=U";
+  const tutorLocation = currentPet?.owner?.location || 'Localização não definida';
 
   const handleNextPhoto = () => {
     if (currentPhotoIndex < petPhotos.length - 1) setCurrentPhotoIndex(prev => prev + 1);

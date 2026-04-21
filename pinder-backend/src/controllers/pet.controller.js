@@ -157,3 +157,31 @@ exports.deletePet = async (req, res) => {
     res.status(500).json({ error: "Erro interno ao apagar pet." });
   }
 };
+// GET /pets/feed (Esta função vai buscar apenas 10 pets, super rápido!)
+exports.getFeedPets = async (req, res) => {
+  try {
+    const { excludeUserId, forAdoption } = req.query;
+
+    const pets = await prisma.pet.findMany({
+      take: 10, // O LIMITE QUE PEDISTE! Traz apenas 10 pets de cada vez.
+      where: {
+        user_id: excludeUserId ? { not: excludeUserId } : undefined,
+        forAdoption: forAdoption === 'true' ? true : undefined,
+      },
+      include: {
+        // Usa "owner" como já tens no teu getPets original
+        owner: {
+          select: { username: true, photo: true, location: true } // Traz só o essencial, poupa memória
+        },
+        breed: {
+          select: { name: true }
+        }
+      }
+    });
+
+    res.json(pets);
+  } catch (error) {
+    console.error("Erro no feed:", error);
+    res.status(500).json({ error: "Erro ao carregar o feed" });
+  }
+};
