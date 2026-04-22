@@ -50,31 +50,50 @@ async function getRecommendations(pet_id) {
 
   console.log(`🐾 Encontrados ${candidates.length} candidatos (todos os tipos)`);
 
-  // 🚫 4. Filter (com lógica de GPS vs DISTRITO)
-  const filtered = candidates.filter((pet) => {
-    // Skip same owner
-    if (pet.user_id === userPet.user_id) return false;
+  // 🚫 4. Filter com estratégia de fallback (3 níveis)
+  
+  // Função auxiliar para filtrar
+  function filterCandidates(pets, requireLocation = true, requirePreference = true) {
+    return pets.filter((pet) => {
+      // Skip same owner - SEMPRE
+      if (pet.user_id === userPet.user_id) return false;
 
-    // Se estamos em modo GPS: exigir coordenadas válidas
-    if (hasGPS && (!pet.owner?.latitude || !pet.owner?.longitude)) {
-      return false;
-    }
-
-    // Se estamos em modo DISTRITO: exigir mesmo distrito
-    if (hasLocation && !hasGPS) {
-      if (pet.owner?.location !== userPet.owner.location) {
-        return false;
+      // Nível 1: Exigir localização se ativado
+      if (requireLocation) {
+        if (hasGPS) {
+          // Modo GPS: exigir coordenadas
+          if (!pet.owner?.latitude || !pet.owner?.longitude) return false;
+        } else if (hasLocation) {
+          // Modo DISTRITO: exigir mesmo distrito
+          if (pet.owner?.location !== userPet.owner.location) return false;
+        }
       }
-    }
 
-    // Gender preference
-    const pref = userPet.preferences?.[0];
-    if (pref?.preferred_gender && pet.gender !== pref.preferred_gender) {
-      return false;
-    }
+      // Nível 2: Exigir preferência se ativado
+      if (requirePreference) {
+        const pref = userPet.preferences?.[0];
+        if (pref?.preferred_gender && pet.gender !== pref.preferred_gender) {
+          return false;
+        }
+      }
 
-    return true;
-  });
+      return true;
+    });
+  }
+
+  // Tentar progressivamente com fallback
+  let filtered = filterCandidates(candidates, true, true); // Localização + Preferências
+  console.log(`✅ Nível 1 (localização + preferências): ${filtered.length} pets`);
+
+  if (filtered.length === 0) {
+    filtered = filterCandidates(candidates, true, false); // Localização apenas
+    console.log(`📍 Nível 2 (localização apenas): ${filtered.length} pets`);
+  }
+
+  if (filtered.length === 0) {
+    filtered = filterCandidates(candidates, false, false); // Sem filtros
+    console.log(`🌍 Nível 3 (sem localização): ${filtered.length} pets`);
+  }
 
   console.log(`✅ Após filtros: ${filtered.length} pets válidos`);
 
@@ -118,7 +137,7 @@ async function getRecommendations(pet_id) {
     return score;
   }
 
-  // 🧮 7. Score + distance
+  // 🧮 7. Score + distance (sem filtrar distância ainda)
   const scored = filtered.map((pet) => {
     let distance = 0;
     let distanceScore = 0;
@@ -132,8 +151,7 @@ async function getRecommendations(pet_id) {
         pet.owner.longitude,
       );
 
-      if (distance > 100) return null; // Filtrar depois
-
+      // Calcular score baseado na distância (sem filtrar 100km agora)
       distanceScore = Math.max(0, 50 - distance);
     } else {
       // Se estamos em modo DISTRITO: todos já estão no mesmo distrito
@@ -146,12 +164,25 @@ async function getRecommendations(pet_id) {
       distance,
       score: scorePet(userPet, pet) + distanceScore,
     };
-  }).filter(p => p !== null); // 🧹 Remover nulls
+  });
 
   console.log(`🎯 Após scoring e distância: ${scored.length} pets`);
 
-  // 📊 8. Sort + return
-  return scored.sort((a, b) => b.score - a.score).slice(0, 20);
+  // 📊 8. Separar: Próximos (<=100km) e Distantes (>100km)
+  const nearby = scored.filter(p => p.distance <= 100 || !hasGPS).sort((a, b) => b.score - a.score);
+  const distant = scored.filter(p => p.distance > 100).sort((a, b) => b.score - a.score);
+
+  console.log(`📍 Próximos (<=100km): ${nearby.length}, Distantes (>100km): ${distant.length}`);
+
+  // 🎯 9. Retornar: Próximos primeiro, depois distantes (sem limite rígido)
+  const recommendations = [
+    ...nearby,
+    ...distant
+  ];
+
+  console.log(`✅ Retornando ${recommendations.length} recomendações (${nearby.length} próximos + ${distant.length} distantes)`);
+  
+  return recommendations;
 }
 
 module.exports = {
