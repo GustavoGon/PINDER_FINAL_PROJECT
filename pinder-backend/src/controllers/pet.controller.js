@@ -1,4 +1,5 @@
 const prisma = require("../prisma");
+const { getRecommendations } = require("../services/recommendation.service");
 
 // GET /pets
 exports.getPets = async (req, res) => {
@@ -215,5 +216,52 @@ exports.getFeedPets = async (req, res) => {
   } catch (error) {
     console.error("Erro no feed:", error);
     res.status(500).json({ error: "Erro ao carregar o feed" });
+  }
+};
+
+// GET /pets/recommendations/:pet_id (Sistema de recomendação inteligente)
+exports.getRecommendationsPets = async (req, res) => {
+  try {
+    const { pet_id } = req.params;
+
+    // Validar que o pet existe
+    const pet = await prisma.pet.findUnique({
+      where: { pet_id }
+    });
+
+    if (!pet) {
+      return res.status(404).json({ error: "Pet não encontrado" });
+    }
+
+    // Chamar o sistema de recomendação do colega
+    const recommendations = await getRecommendations(pet_id);
+
+    console.log(`📲 Retornadas ${recommendations.length} recomendações`);
+
+    if (recommendations.length === 0) {
+      return res.json([]);
+    }
+
+    // Adicionar fotos a cada recomendação
+    const recommendationsWithPhotos = await Promise.all(
+      recommendations.map(async (rec) => {
+        const photos = await prisma.petPhoto.findMany({
+          where: { pet_id: rec.pet_id },
+          select: { url: true }
+        });
+        
+        return {
+          ...rec,
+          photos: photos,
+          distance: rec.distance,
+          recommendationScore: rec.score
+        };
+      })
+    );
+
+    res.json(recommendationsWithPhotos);
+  } catch (error) {
+    console.error("Erro nas recomendações:", error);
+    res.status(500).json({ error: "Erro ao carregar recomendações" });
   }
 };

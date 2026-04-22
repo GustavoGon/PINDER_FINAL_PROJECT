@@ -38,9 +38,9 @@ exports.getUsers = async (req, res) => {
 // POST /users
 exports.createUser = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password, district } = req.body;
 
-    // basic validation // buld better validations
+    // basic validation
     if (!username || !email || !password) {
       return res.status(400).json({ error: "Missing fields" });
     }
@@ -52,6 +52,7 @@ exports.createUser = async (req, res) => {
         username,
         email,
         password: hashedPassword,
+        location: district || null,
         isBanned: false
       },
     });
@@ -131,5 +132,31 @@ exports.updateUser = async (req, res) => {
   } catch (error) {
     console.error("Erro ao atualizar utilizador:", error);
     res.status(500).json({ error: "Erro interno do servidor ao atualizar utilizador." });
+  }
+};
+
+// PUT /users/:user_id/location - Atualizar localização do user
+exports.updateUserLocation = async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const { latitude, longitude, location } = req.body;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: "Latitude e longitude são obrigatórias" });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { user_id },
+      data: {
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        location: location || null
+      }
+    });
+
+    res.status(200).json({ message: "Localização atualizada", user: updatedUser });
+  } catch (error) {
+    console.error("Erro ao atualizar localização:", error);
+    res.status(500).json({ error: "Erro ao atualizar localização" });
   }
 };

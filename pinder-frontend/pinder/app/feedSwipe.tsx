@@ -63,25 +63,24 @@ export default function FeedSwipe() {
         if (userPetsResponse.ok) {
           const userPets = await userPetsResponse.json();
           if (userPets.length > 0) {
-            setMyPetId(userPets[0].pet_id); // Guardar o primeiro pet do utilizador
+            const myPet = userPets[0]; // Guardar o primeiro pet do utilizador
+            setMyPetId(myPet.pet_id);
+
+            // USAR O NOVO ENDPOINT DE RECOMENDAÇÕES
+            const recommendationsResponse = await fetch(
+              `${API_URL}/pets/recommendations/${myPet.pet_id}`
+            );
+            
+            if (recommendationsResponse.ok) {
+              const feedPets = await recommendationsResponse.json();
+              setPets(feedPets);
+              setCurrentIndex(0);
+            } else {
+              console.error("Erro do servidor:", await recommendationsResponse.text());
+            }
           }
-        }
-
-        const isForAdoption = activeProfile.type === 'tutor' ? 'true' : 'false';
-
-        console.log(`A fazer fetch para: ${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}&userId=${myUserId}&skip=0`);
-
-        const response = await fetch(
-          `${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}&userId=${myUserId}&skip=0`
-        );
-        
-        if (response.ok) {
-          const feedPets = await response.json();
-          setPets(feedPets);
-          setCurrentIndex(0);
-          setSkip(10);
         } else {
-          console.error("Erro do servidor:", await response.text());
+          console.error("Erro ao carregar pets do utilizador");
         }
       } catch (error) {
         console.error("Erro de Rede (Verifica o teu IP!):", error);

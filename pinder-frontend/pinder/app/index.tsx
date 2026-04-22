@@ -10,19 +10,50 @@ import {
 } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   
   const router = useRouter(); 
 
   // Vai buscar a variável global, ou usa um valor de segurança caso o .env falhe
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
 
+  const updateUserLocation = async (userId: string) => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({});
+        
+        console.log(`📍 Localização obtida: ${location.coords.latitude}, ${location.coords.longitude}`);
+        
+        // Atualizar localização no backend
+        await fetch(`${API_URL}/users/${userId}/location`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude
+          }),
+        });
+      } else {
+        console.log('Permissão de localização negada');
+      }
+    } catch (error) {
+      console.error('Erro ao obter localização:', error);
+    }
+  };
+
   const handleLogin = async () => {
     setErrorMessage('');
+    setIsLoading(true);
 
     try {
       const response = await fetch(`${API_URL}/users/login`, {
@@ -43,14 +74,21 @@ export default function Login() {
         // Guarda o utilizador usando a memória do telemóvel
         await AsyncStorage.setItem('user', JSON.stringify(userWithoutPhoto));
 
+        // Tenta obter localização em background
+        updateUserLocation(data.user.user_id);
+
         // Redireciona para a página principal
-        router.push('/feedSwipe'); 
+        setTimeout(() => {
+          router.push('/feedSwipe');
+        }, 500);
       } else {
         setErrorMessage(data.error || 'Erro ao iniciar sessão.');
       }
     } catch (error) {
       console.error('Erro de ligação:', error);
       setErrorMessage(`Não foi possível ligar ao servidor (${API_URL}). Verifica se o backend está a correr e se o IP está correto.`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -86,8 +124,14 @@ export default function Login() {
           ) : null}
 
         
-          <TouchableOpacity style={styles.btnPrimary} onPress={handleLogin}>
-            <Text style={styles.btnPrimaryText}>Entrar</Text>
+          <TouchableOpacity 
+            style={[styles.btnPrimary, isLoading && styles.btnDisabled]} 
+            onPress={handleLogin}
+            disabled={isLoading}
+          >
+            <Text style={styles.btnPrimaryText}>
+              {isLoading ? 'A autenticar...' : 'Entrar'}
+            </Text>
           </TouchableOpacity>
           
           <View style={styles.registerContainer}>
@@ -155,6 +199,9 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     alignItems: 'center',
     marginTop: 10,
+  },
+  btnDisabled: {
+    backgroundColor: '#a89d93',
   },
   btnPrimaryText: {
     color: 'white',

@@ -11,6 +11,7 @@ const recommendationRoutes = require("./routes/recommendation.routes");
 const speciesRoutes = require('./routes/species.routes');
 const breedRoutes = require('./routes/breed.routes');
 const groupRoutes = require('./routes/group.routes');
+const districtRoutes = require('./routes/district.routes');
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.use("/interactions", interactionRoutes);
 app.use("/matches", matchRoutes);
 app.use("/messages", messageRoutes);
 app.use("/groups", groupRoutes);
+app.use("/districts", districtRoutes);
 app.use("/uploads", express.static("uploads"));
 app.use("/recommendations", recommendationRoutes);
 

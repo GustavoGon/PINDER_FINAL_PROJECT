@@ -22,6 +22,9 @@ router.post("/upload", upload.single("photo"), async (req, res) => {
 // UPDATE user
 router.put('/:user_id', userController.updateUser);
 
+// UPDATE user location
+router.put('/:user_id/location', userController.updateUserLocation);
+
 // GET user by ID
 router.get('/:user_id', userController.getUserById);
 

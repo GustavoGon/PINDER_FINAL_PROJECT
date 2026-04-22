@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -6,26 +6,58 @@ import {
   TouchableOpacity, 
   StyleSheet, 
   KeyboardAvoidingView, 
-  Platform 
+  Platform,
+  ScrollView,
+  ActivityIndicator,
+  Modal,
+  FlatList
 } from 'react-native';
 import { useRouter, Link } from 'expo-router';
+import { FontAwesome5 } from '@expo/vector-icons';
 
 export default function Register() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [district, setDistrict] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  
-  const [isLoading, setIsLoading] = useState(false); 
+  const [isLoading, setIsLoading] = useState(false);
+  const [districts, setDistricts] = useState<any[]>([]);
+  const [loadingDistricts, setLoadingDistricts] = useState(true);
+  const [showDistrictPicker, setShowDistrictPicker] = useState(false);
   
   const router = useRouter();
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
+
+  // Carregar distritos ao abrir
+  useEffect(() => {
+    fetchDistricts();
+  }, []);
+
+  const fetchDistricts = async () => {
+    try {
+      const response = await fetch(`${API_URL}/districts`);
+      if (response.ok) {
+        const data = await response.json();
+        setDistricts(data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar distritos:', error);
+    } finally {
+      setLoadingDistricts(false);
+    }
+  };
 
   const handleRegister = async () => {
     // Validação básica antes de enviar para o servidor
     if (password.length < 6) {
       setErrorMessage('A password tem de ter pelo menos 6 caracteres.');
+      return;
+    }
+
+    if (!district) {
+      setErrorMessage('Por favor seleciona um distrito.');
       return;
     }
 
@@ -42,8 +74,9 @@ export default function Register() {
 
         body: JSON.stringify({ 
           username: username.trim(), 
-          email: email.trim().toLowerCase(), 
-          password 
+          email: email.trim().toLowerCase(),
+          password,
+          district: district
         }),
       });
 
@@ -76,62 +109,118 @@ export default function Register() {
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.loginBox}>
-        <Text style={styles.logo}>Pinder</Text>
-        <Text style={styles.subtitle}>Junta-te a nós e encontra amigos para o teu pet!</Text>
-        
-        <View style={styles.form}>
-          <TextInput 
-            style={styles.inputField} 
-            placeholder="Nome de Utilizador" 
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="words" // Capitaliza a primeira letra do nome
-          />
-          <TextInput 
-            style={styles.inputField} 
-            placeholder="Email" 
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          <TextInput 
-            style={styles.inputField} 
-            placeholder="Password" 
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={true} // Oculta a password
-          />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.loginBox}>
+          <Text style={styles.logo}>Pinder</Text>
+          <Text style={styles.subtitle}>Junta-te a nós e encontra amigos para o teu pet!</Text>
           
-          {errorMessage ? (
-            <Text style={styles.errorText}>{errorMessage}</Text>
-          ) : null}
-          
-          {successMessage ? (
-            <Text style={styles.successText}>{successMessage}</Text>
-          ) : null}
+          <View style={styles.form}>
+            <TextInput 
+              style={styles.inputField} 
+              placeholder="Nome de Utilizador" 
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="words"
+            />
+            <TextInput 
+              style={styles.inputField} 
+              placeholder="Email" 
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <TextInput 
+              style={styles.inputField} 
+              placeholder="Password" 
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={true}
+            />
 
-          <TouchableOpacity 
-            style={[styles.btnPrimary, isLoading && styles.btnDisabled]} 
-            onPress={handleRegister}
-            disabled={isLoading}
-          >
-            <Text style={styles.btnPrimaryText}>
-              {isLoading ? 'Aguarde...' : 'Criar Conta'}
-            </Text>
-          </TouchableOpacity>
+            {/* Selector de Distrito */}
+            <TouchableOpacity 
+              style={styles.districtButton}
+              onPress={() => setShowDistrictPicker(true)}
+            >
+              <FontAwesome5 name="map-marker-alt" size={16} color="#ff9950" />
+              <Text style={[styles.districtButtonText, !district && { color: '#999' }]}>
+                {district || 'Seleciona um distrito'}
+              </Text>
+              <FontAwesome5 name="chevron-down" size={14} color="#999" />
+            </TouchableOpacity>
 
-          <View style={styles.footerContainer}>
-            <Text style={styles.footerText}>Já tens uma conta? </Text>
-            <Link href="/" asChild>
-              <TouchableOpacity>
-                <Text style={styles.footerLink}>Entrar aqui</Text>
-              </TouchableOpacity>
-            </Link>
+            {/* Modal do Picker de Distritos */}
+            <Modal
+              visible={showDistrictPicker}
+              transparent={true}
+              animationType="slide"
+              onRequestClose={() => setShowDistrictPicker(false)}
+            >
+              <View style={styles.pickerContainer}>
+                <View style={styles.pickerHeader}>
+                  <TouchableOpacity onPress={() => setShowDistrictPicker(false)}>
+                    <Text style={styles.pickerHeaderText}>Fechar</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.pickerTitle}>Seleciona um Distrito</Text>
+                  <View style={{ width: 50 }} />
+                </View>
+                
+                <FlatList
+                  data={districts}
+                  keyExtractor={(item, index) => index.toString()}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity 
+                      style={[
+                        styles.districtOption,
+                        district === item.name && styles.districtOptionSelected
+                      ]}
+                      onPress={() => {
+                        setDistrict(item.name);
+                        setShowDistrictPicker(false);
+                      }}
+                    >
+                      <Text style={[
+                        styles.districtOptionText,
+                        district === item.name && styles.districtOptionTextSelected
+                      ]}>
+                        {item.name}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            </Modal>
+            
+            {errorMessage ? (
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            ) : null}
+            
+            {successMessage ? (
+              <Text style={styles.successText}>{successMessage}</Text>
+            ) : null}
+
+            <TouchableOpacity 
+              style={[styles.btnPrimary, isLoading && styles.btnDisabled]} 
+              onPress={handleRegister}
+              disabled={isLoading}
+            >
+              <Text style={styles.btnPrimaryText}>
+                {isLoading ? 'Aguarde...' : 'Criar Conta'}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.footerContainer}>
+              <Text style={styles.footerText}>Já tens uma conta? </Text>
+              <Link href="/" asChild>
+                <TouchableOpacity>
+                  <Text style={styles.footerLink}>Entrar aqui</Text>
+                </TouchableOpacity>
+              </Link>
+            </View>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -141,6 +230,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F2EB',
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 20,
   },
@@ -175,6 +267,66 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     color: '#333',
   },
+  districtButton: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#D6CEC3',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  districtButtonText: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#333',
+  },
+  pickerContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  pickerHeader: {
+    backgroundColor: 'white',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  pickerHeaderText: {
+    color: '#ff9950',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  pickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  districtOption: {
+    backgroundColor: 'white',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  districtOptionSelected: {
+    backgroundColor: '#FFF3E0',
+  },
+  districtOptionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  districtOptionTextSelected: {
+    color: '#ff9950',
+    fontWeight: '600',
+  },
   errorText: {
     color: '#ff4d4d',
     fontSize: 14,
@@ -196,7 +348,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   btnDisabled: {
-    backgroundColor: '#a89d93', // Cor mais clara quando está a carregar
+    backgroundColor: '#a89d93',
   },
   btnPrimaryText: {
     color: 'white',

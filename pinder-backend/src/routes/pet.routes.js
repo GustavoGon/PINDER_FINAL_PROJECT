@@ -5,6 +5,10 @@ const upload = require("../middleware/upload");
 
 
 router.get('/feed', petController.getFeedPets);
+
+// Rota para obter recomendações inteligentes para um pet
+router.get('/recommendations/:pet_id', petController.getRecommendationsPets);
+
 // Rota para obter todos os pets
 router.get("/", petController.getPets);
 
