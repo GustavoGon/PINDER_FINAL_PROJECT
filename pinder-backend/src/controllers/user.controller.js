@@ -117,15 +117,18 @@ exports.updateUser = async (req, res) => {
     const { user_id } = req.params;
     const { username, dob, location, photo } = req.body;
 
+    // Construir objeto de dados dinamicamente (só enviar o que foi realmente alterado)
+    const dataToUpdate = {};
+    
+    if (username !== undefined) dataToUpdate.username = username;
+    if (dob !== undefined) dataToUpdate.dob = dob;
+    if (location !== undefined) dataToUpdate.location = location;
+    if (photo !== undefined) dataToUpdate.photo = photo;
+
     // Atualiza o utilizador na base de dados
     const updatedUser = await prisma.user.update({
       where: { user_id: user_id },
-      data: {
-        username: username,
-        dob: dob, 
-        location: location, 
-        photo: photo !== undefined ? photo : undefined
-      }
+      data: dataToUpdate
     });
 
     res.status(200).json({ message: "Utilizador atualizado", user: updatedUser });
@@ -145,13 +148,20 @@ exports.updateUserLocation = async (req, res) => {
       return res.status(400).json({ error: "Latitude e longitude são obrigatórias" });
     }
 
+    // Se location não é enviado, manter o valor anterior
+    const dataToUpdate = {
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude)
+    };
+
+    // Só atualizar location se for explicitamente enviado
+    if (location !== undefined) {
+      dataToUpdate.location = location;
+    }
+
     const updatedUser = await prisma.user.update({
       where: { user_id },
-      data: {
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        location: location || null
-      }
+      data: dataToUpdate
     });
 
     res.status(200).json({ message: "Localização atualizada", user: updatedUser });

@@ -9,6 +9,11 @@ router.get('/feed', petController.getFeedPets);
 // Rota para obter recomendações inteligentes para um pet
 router.get('/recommendations/:pet_id', petController.getRecommendationsPets);
 
+// 🆕 Rotas de adoção (tutor)
+router.post('/adoptions', petController.saveAdoptionInteraction);
+router.get('/adoptions/user/:tutor_id', petController.getTutorAdoptions);
+router.get('/adoptions/user/:tutor_id/seen', petController.getTutorSeenAdoptions);
+
 // Rota para obter todos os pets
 router.get("/", petController.getPets);
 

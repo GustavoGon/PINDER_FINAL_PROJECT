@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomNav from '../src/components/BottomNav';
 import MatchModal from '../src/components/MatchModal';
+import AdoptionModal from '../src/components/AdoptionModal';
 import { useActiveProfile } from '../src/contexts/ActiveProfileContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -32,7 +33,9 @@ export default function FeedSwipe() {
   const [myPetId, setMyPetId] = useState<string | null>(null);
   const [matchedPet, setMatchedPet] = useState<any>(null);
   const [showMatchModal, setShowMatchModal] = useState(false);
-  const [skip, setSkip] = useState(0); // 🆕 Controlar paginação
+  const [showAdoptionModal, setShowAdoptionModal] = useState(false);
+  const [adoptedPet, setAdoptedPet] = useState<any>(null);
+  const [skip, setSkip] = useState(0);
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
@@ -198,36 +201,76 @@ export default function FeedSwipe() {
       return;
     }
 
-    // 🔑 Se é TUTOR: myPetId não faz sentido, pula o swipe
-    if (activeProfile?.type === 'tutor') {
-      console.warn("⚠️ Tutores não podem fazer swipe. Precisa selecionar um pet.");
-      return;
-    }
-
-    if (!myPetId) {
-      console.warn("Pet do utilizador não configurado");
-      return;
-    }
-    
     const isLike = direction === 'right';
 
     try {
-      const response = await fetch(`${API_URL}/interactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pet_id: myPetId,
-          target_pet_id: swipedPet.pet_id,
-          like_dislike: isLike
-        })
-      });
+      // 👤 Se é TUTOR: guardar em TutorAdoptionInteraction
+      if (activeProfile?.type === 'tutor') {
+        const userStr = await AsyncStorage.getItem('user');
+        const currentUser = userStr ? JSON.parse(userStr) : {};
+        const tutorId = currentUser.user_id || currentUser.id;
 
-      if (response.status === 201) {
-        // MATCH DETECTADO!
-        const data = await response.json();
-        if (data.message === "🎉 It's a match!") {
-          setMatchedPet(swipedPet);
-          setShowMatchModal(true);
+        console.log(`📤 Enviando adoção: tutor=${tutorId}, pet=${swipedPet.pet_id}, like=${isLike}`);
+
+        // Registar interação do tutor
+        try {
+          const adoptionResponse = await fetch(`${API_URL}/pets/adoptions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tutor_id: tutorId,
+              pet_id: swipedPet.pet_id,
+              like_dislike: isLike
+            })
+          });
+
+          if (!adoptionResponse.ok) {
+            const errorText = await adoptionResponse.text();
+            console.error(`❌ Erro ${adoptionResponse.status}:`, errorText);
+            throw new Error(`HTTP ${adoptionResponse.status}`);
+          }
+
+          const adoptionData = await adoptionResponse.json();
+          console.log(`✅ Adoção guardada:`, adoptionData);
+
+          if (adoptionData && isLike) {
+            // Mostrar modal de adoção apenas se foi like
+            setAdoptedPet(swipedPet);
+            setShowAdoptionModal(true);
+          } else if (isLike) {
+            console.log(`❤️ Interesse registado em: ${swipedPet.name}`);
+          } else {
+            console.log(`❌ Tutor rejeitou: ${swipedPet.name}`);
+          }
+        } catch (error) {
+          console.error(`🔴 Erro ao guardar adoção:`, error);
+        }
+      } 
+      // 🐾 Se é PET: registrar interação normal
+      else {
+        if (!myPetId) {
+          console.warn("Pet do utilizador não configurado");
+          setCurrentIndex((prev) => prev + 1);
+          return;
+        }
+
+        const response = await fetch(`${API_URL}/interactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pet_id: myPetId,
+            target_pet_id: swipedPet.pet_id,
+            like_dislike: isLike
+          })
+        });
+
+        if (response.status === 201) {
+          // MATCH DETECTADO!
+          const data = await response.json();
+          if (data.message === "🎉 It's a match!") {
+            setMatchedPet(swipedPet);
+            setShowMatchModal(true);
+          }
         }
       }
     } catch (error) {
@@ -245,6 +288,11 @@ export default function FeedSwipe() {
     
     // Ambos (tutor e pet) vão para matches após um match
     router.push('/matches');
+  };
+
+  const handleAdoptionModalClose = () => {
+    setShowAdoptionModal(false);
+    // Continua na tela de swipe
   };
 
   const resetPosition = () => {
@@ -463,6 +511,13 @@ export default function FeedSwipe() {
         petPhoto={matchedPet?.main_photo || ''}
         onClose={handleMatchModalClose}
         isTutor={activeProfile?.type === 'tutor'}
+      />
+
+      <AdoptionModal
+        visible={showAdoptionModal}
+        petName={adoptedPet?.name || ''}
+        petPhoto={adoptedPet?.main_photo || ''}
+        onClose={handleAdoptionModalClose}
       />
 
       <BottomNav activePage="home" />

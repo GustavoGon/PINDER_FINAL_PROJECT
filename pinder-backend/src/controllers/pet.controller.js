@@ -170,7 +170,7 @@ exports.getFeedPets = async (req, res) => {
     if (userId) {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 dias atrás
       
-      // Procurar todas as interactions do utilizador
+      // Procurar todas as interactions do utilizador (PET)
       const userPet = await prisma.pet.findFirst({
         where: { user_id: userId }
       });
@@ -180,7 +180,7 @@ exports.getFeedPets = async (req, res) => {
           where: {
             pet_id: userPet.pet_id,
             timestamp: {
-              gte: sevenDaysAgo // Apenas interações dos últimos 7 dias
+              gte: sevenDaysAgo
             }
           },
           select: { target_pet_id: true }
@@ -188,7 +188,18 @@ exports.getFeedPets = async (req, res) => {
 
         excludePetIds = recentInteractions.map(i => i.target_pet_id);
       }
+
+      // 🆕 Se é tutor (não tem pets, apenas profile), excluir pets já interagidos
+      const tutorInteractions = await prisma.tutorAdoptionInteraction.findMany({
+        where: { tutor_id: userId },
+        select: { pet_id: true }
+      });
+
+      excludePetIds = [...excludePetIds, ...tutorInteractions.map(i => i.pet_id)];
     }
+
+    // Remover duplicatas
+    excludePetIds = [...new Set(excludePetIds)];
 
     // Buscar pets com os filtros aplicados e paginação
     const pets = await prisma.pet.findMany({
@@ -197,7 +208,7 @@ exports.getFeedPets = async (req, res) => {
       where: {
         user_id: excludeUserId ? { not: excludeUserId } : undefined,
         forAdoption: forAdoption === 'true' ? true : undefined,
-        pet_id: excludePetIds.length > 0 ? { notIn: excludePetIds } : undefined, // Excluir pets já vistos (últimos 7 dias)
+        pet_id: excludePetIds.length > 0 ? { notIn: excludePetIds } : undefined,
       },
       include: {
         owner: {
@@ -263,5 +274,103 @@ exports.getRecommendationsPets = async (req, res) => {
   } catch (error) {
     console.error("Erro nas recomendações:", error);
     res.status(500).json({ error: "Erro ao carregar recomendações" });
+  }
+};
+
+// POST /adoptions - Guardar interação de adoção (tutor + pet)
+exports.saveAdoptionInteraction = async (req, res) => {
+  try {
+    const { tutor_id, pet_id, like_dislike } = req.body;
+
+    console.log(`📥 POST /adoptions recebido:`, { tutor_id, pet_id, like_dislike });
+
+    if (!tutor_id || !pet_id) {
+      return res.status(400).json({ error: "tutor_id e pet_id são obrigatórios" });
+    }
+
+    // Tentar encontrar primeiro
+    const existing = await prisma.tutorAdoptionInteraction.findFirst({
+      where: { 
+        tutor_id,
+        pet_id 
+      }
+    });
+
+    let interaction;
+    if (existing) {
+      // Atualizar
+      interaction = await prisma.tutorAdoptionInteraction.update({
+        where: { adoption_id: existing.adoption_id },
+        data: { like_dislike }
+      });
+      console.log(`🔄 Interação atualizada:`, interaction.adoption_id);
+    } else {
+      // Criar nova
+      interaction = await prisma.tutorAdoptionInteraction.create({
+        data: {
+          tutor_id,
+          pet_id,
+          like_dislike
+        }
+      });
+      console.log(`✅ Interação criada:`, interaction.adoption_id);
+    }
+
+    res.status(201).json({
+      message: like_dislike ? "❤️ Interesse registado" : "❌ Rejeição registada",
+      interaction
+    });
+  } catch (error) {
+    console.error("🔴 Erro ao guardar interação de adoção:", error);
+    res.status(500).json({ error: "Erro ao guardar interação", details: error.message });
+  }
+};
+
+// GET /adoptions/user/:tutor_id - Listar adoções que o tutor fez swipe right
+exports.getTutorAdoptions = async (req, res) => {
+  try {
+    const { tutor_id } = req.params;
+
+    // Buscar apenas os pets que o tutor fez swipe right (like_dislike = true)
+    const adoptions = await prisma.tutorAdoptionInteraction.findMany({
+      where: {
+        tutor_id,
+        like_dislike: true
+      },
+      include: {
+        pet: {
+          include: {
+            owner: true,
+            breed: true,
+            photos: true
+          }
+        }
+      },
+      orderBy: { timestamp: 'desc' }
+    });
+
+    res.json(adoptions);
+  } catch (error) {
+    console.error("Erro ao buscar adoções do tutor:", error);
+    res.status(500).json({ error: "Erro ao carregar adoções" });
+  }
+};
+
+// GET /adoptions/user/:tutor_id/seen - Listar pets já vistos pelo tutor (skip ou reject)
+exports.getTutorSeenAdoptions = async (req, res) => {
+  try {
+    const { tutor_id } = req.params;
+
+    // Buscar todos os pets que o tutor já interagiu (like ou dislike)
+    const seenPets = await prisma.tutorAdoptionInteraction.findMany({
+      where: { tutor_id },
+      select: { pet_id: true, like_dislike: true },
+      orderBy: { timestamp: 'desc' }
+    });
+
+    res.json(seenPets);
+  } catch (error) {
+    console.error("Erro ao buscar pets vistos:", error);
+    res.status(500).json({ error: "Erro ao carregar pets vistos" });
   }
 };

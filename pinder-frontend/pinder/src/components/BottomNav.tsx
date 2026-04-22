@@ -7,7 +7,7 @@ import PetSelectionPopup from './PetSelectionPopup';
 import { useActiveProfile } from '../contexts/ActiveProfileContext';
 
 interface BottomNavProps {
-  activePage: 'home' | 'groups' | 'chat' | 'matches' | 'profile';
+  activePage: 'home' | 'groups' | 'chat' | 'matches' | 'adoptions' | 'profile';
 }
 
 export default function BottomNav({ activePage }: BottomNavProps) {
@@ -52,6 +52,13 @@ export default function BottomNav({ activePage }: BottomNavProps) {
           <TouchableOpacity style={styles.navItem} onPress={() => navigateTo('/matches')}>
             <FontAwesome5 name="heart" size={24} color={activePage === 'matches' ? '#5C4A3D' : '#B0A8A0'} solid={activePage === 'matches'} />
             <Text style={[styles.navText, activePage === 'matches' && styles.activeText]}>Matches</Text>
+          </TouchableOpacity>
+        )}
+
+        {!isPetUser && (
+          <TouchableOpacity style={styles.navItem} onPress={() => navigateTo('/adoptions')}>
+            <FontAwesome5 name="paw" size={24} color={activePage === 'adoptions' ? '#4CAF50' : '#B0A8A0'} />
+            <Text style={[styles.navText, activePage === 'adoptions' && styles.activeText, activePage === 'adoptions' && { color: '#4CAF50' }]}>Adoções</Text>
           </TouchableOpacity>
         )}
 

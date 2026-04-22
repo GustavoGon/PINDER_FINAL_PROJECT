@@ -39,9 +39,10 @@ model User {
   description String?
   isBanned    Boolean 
 
-  pets            Pet[]
-  messages        Message[]
-  preferences     UserPreference[]
+  pets                      Pet[]
+  messages                  Message[]
+  preferences               UserPreference[]
+  tutorAdoptionInteractions TutorAdoptionInteraction[]
 
   @@map("users")
 }
@@ -74,6 +75,7 @@ model Pet {
   matches2 Match[] @relation("pet2")
 
   preferences PetPreference[]
+  tutorAdoptionInteractions TutorAdoptionInteraction[]
 
   @@map("pets")
 }
@@ -265,4 +267,19 @@ model GroupEventAttendee {
   @@id([group_id, user_id])
   @@map("group_attendees")
 }
+
+model TutorAdoptionInteraction {
+  adoption_id   String   @id @default(uuid())
+  tutor_id      String   // user_id do tutor
+  pet_id        String   // pet_id do pet para adoção
+  like_dislike  Boolean  // true = swipe right (interesse), false = swipe left (rejeição)
+  timestamp     DateTime @default(now())
+
+  tutor User @relation(fields: [tutor_id], references: [user_id])
+  pet   Pet  @relation(fields: [pet_id], references: [pet_id])
+
+  @@unique([tutor_id, pet_id]) // Evitar duplicatas - um tutor só pode ter uma ação por pet
+  @@map("tutor_adoption_interactions")
+}
+
 
