@@ -53,39 +53,53 @@ export default function FeedSwipe() {
       }
 
       setIsLoading(true);
+      setPets([]); // Limpar pets anteriores
+      setCurrentIndex(0);
+      
       try {
         const userStr = await AsyncStorage.getItem('user');
         const currentUser = userStr ? JSON.parse(userStr) : {};
         const myUserId = currentUser.user_id || currentUser.id;
 
-        // PROCURAR O PET DO UTILIZADOR PARA OBTER O pet_id
-        const userPetsResponse = await fetch(`${API_URL}/pets/user/${myUserId}`);
-        if (userPetsResponse.ok) {
-          const userPets = await userPetsResponse.json();
-          if (userPets.length > 0) {
-            const myPet = userPets[0]; // Guardar o primeiro pet do utilizador
-            setMyPetId(myPet.pet_id);
-
-            // USAR O NOVO ENDPOINT DE RECOMENDAÇÕES
-            const recommendationsResponse = await fetch(
-              `${API_URL}/pets/recommendations/${myPet.pet_id}`
+        // 🔍 Se é PET: Usar recomendações do pet específico
+        if (activeProfile.type === 'pet') {
+          console.log(`🐾 Modo PET: Carregando recomendações para ${activeProfile.id}`);
+          
+          const recommendationsResponse = await fetch(
+            `${API_URL}/pets/recommendations/${activeProfile.id}`
+          );
+          
+          if (recommendationsResponse.ok) {
+            const feedPets = await recommendationsResponse.json();
+            setPets(feedPets);
+            setMyPetId(activeProfile.id);
+          } else {
+            console.error("Erro do servidor:", await recommendationsResponse.text());
+          }
+        } 
+        // 👤 Se é TUTOR: Mostrar pets para adoção próximos
+        else if (activeProfile.type === 'tutor') {
+          console.log(`👤 Modo TUTOR: Carregando pets para adoção`);
+          
+          const userResponse = await fetch(`${API_URL}/users/${myUserId}`);
+          if (userResponse.ok) {
+            const userData = await userResponse.json();
+            
+            // Buscar pets para adoção (usar o endpoint de feed com forAdoption=true)
+            const forAdoptionResponse = await fetch(
+              `${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=true&userId=${myUserId}&skip=0`
             );
             
-            if (recommendationsResponse.ok) {
-              const feedPets = await recommendationsResponse.json();
-              setPets(feedPets);
-              setCurrentIndex(0);
-            } else {
-              console.error("Erro do servidor:", await recommendationsResponse.text());
+            if (forAdoptionResponse.ok) {
+              const adoptionPets = await forAdoptionResponse.json();
+              setPets(adoptionPets);
             }
           }
-        } else {
-          console.error("Erro ao carregar pets do utilizador");
         }
       } catch (error) {
         console.error("Erro de Rede (Verifica o teu IP!):", error);
       } finally {
-        setIsLoading(false); // Garante que desliga SEMPRE o loading no fim
+        setIsLoading(false);
       }
     };
 
@@ -103,10 +117,11 @@ export default function FeedSwipe() {
     return age === 1 ? "1 ano" : `${age} anos`;
   };
 
-  // --- 2. CARREGAR MAIS PETS QUANDO PRÓXIMO DO FINAL---
+  // --- 2. CARREGAR MAIS PETS QUANDO PRÓXIMO DO FINAL (TUTOR ONLY) ---
   useEffect(() => {
     // Carregar mais pets quando está perto do final (2 cards antes do fim)
-    if (currentIndex >= pets.length - 2 && pets.length > 0 && !isLoading) {
+    // MAS APENAS em modo TUTOR (pets para adoção têm paginação)
+    if (activeProfile?.type === 'tutor' && currentIndex >= pets.length - 2 && pets.length > 0 && !isLoading) {
       loadMorePets();
     }
   }, [currentIndex, pets.length]);
@@ -183,8 +198,14 @@ export default function FeedSwipe() {
       return;
     }
 
+    // 🔑 Se é TUTOR: myPetId não faz sentido, pula o swipe
+    if (activeProfile?.type === 'tutor') {
+      console.warn("⚠️ Tutores não podem fazer swipe. Precisa selecionar um pet.");
+      return;
+    }
+
     if (!myPetId) {
-      console.warn("Utilizador não tem pet configurado");
+      console.warn("Pet do utilizador não configurado");
       return;
     }
     
@@ -222,13 +243,8 @@ export default function FeedSwipe() {
   const handleMatchModalClose = () => {
     setShowMatchModal(false);
     
-    // Se for tutor, ir para chat
-    if (activeProfile?.type === 'tutor') {
-      router.push('/chat');
-    } else {
-      // Se for pet, ir para matches
-      router.push('/matches');
-    }
+    // Ambos (tutor e pet) vão para matches após um match
+    router.push('/matches');
   };
 
   const resetPosition = () => {
@@ -271,14 +287,18 @@ export default function FeedSwipe() {
   }
 
   if (currentIndex >= pets.length) {
+    const emptyMessage = activeProfile?.type === 'tutor' 
+      ? 'Não há mais pets para adoção no teu distrito'
+      : 'Já viste todos os pets disponíveis!';
+
     return (
       <View style={styles.container}>
         <View style={styles.header}><Text style={styles.logoTitle}>Pinder</Text></View>
         <View style={[styles.mainArea, { alignItems: 'center', justifyContent: 'center' }]}>
           <FontAwesome5 name="check-circle" size={60} color="#D6CEC3" />
-          <Text style={{ fontSize: 20, color: '#5C4A3D', fontWeight: 'bold', marginTop: 20 }}>Já viste todos!</Text>
+          <Text style={{ fontSize: 20, color: '#5C4A3D', fontWeight: 'bold', marginTop: 20 }}>Pronto!</Text>
           <Text style={{ color: '#888', marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
-            Não há mais pets disponíveis de momento.
+            {emptyMessage}
           </Text>
         </View>
         <BottomNav activePage="home" />

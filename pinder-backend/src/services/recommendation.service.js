@@ -34,10 +34,11 @@ async function getRecommendations(pet_id) {
   const seenIds = seen.map((s) => s.target_pet_id);
   console.log(`📊 Pet ${pet_id} já viu ${seenIds.length} pets`);
 
-  // 🐾 3. Get candidates
+  // 🐾 3. Get candidates (TODOS os pets, independente do tipo)
   const candidates = await prisma.pet.findMany({
     where: {
       pet_id: { not: pet_id },
+      // 🔑 Sem filtro de forAdoption: pets veem TODOS os outros pets
       NOT: { pet_id: { in: seenIds } },
     },
     include: {
@@ -47,7 +48,7 @@ async function getRecommendations(pet_id) {
     },
   });
 
-  console.log(`🐾 Encontrados ${candidates.length} candidatos`);
+  console.log(`🐾 Encontrados ${candidates.length} candidatos (todos os tipos)`);
 
   // 🚫 4. Filter (com lógica de GPS vs DISTRITO)
   const filtered = candidates.filter((pet) => {
