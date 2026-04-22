@@ -33,8 +33,8 @@ model User {
   password    String
   photo       String?
   location    String?
-  latitude    Float
-  longitude   Float
+  latitude    Float?
+  longitude   Float?
   dob         DateTime?
   description String?
   isBanned    Boolean 
@@ -233,5 +233,36 @@ model Characteristic {
   created_at DateTime @default(now())
 
   @@map("characteristics")
+}
+
+model Group {
+  group_id      String   @id @default(uuid())
+  title         String
+  description   String?
+  date          DateTime
+  time          String?
+  location      String
+  latitude      Float
+  longitude     Float
+  max_attendees Int?
+  image         String?
+  created_by    String
+  created_at    DateTime @default(now())
+
+  attendees GroupEventAttendee[]
+
+  @@map("groups")
+}
+
+model GroupEventAttendee {
+  group_id  String
+  user_id   String
+  pet_id    String?
+  joined_at DateTime @default(now())
+
+  group Group @relation(fields: [group_id], references: [group_id], onDelete: Cascade)
+
+  @@id([group_id, user_id])
+  @@map("group_attendees")
 }
 
