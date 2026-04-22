@@ -1,16 +1,41 @@
 const { faker } = require("@faker-js/faker");
 const bcrypt = require("bcrypt");
 
+const cities = [
+  { city: "Lisbon", lat: 38.7223, lng: -9.1393 },
+  { city: "Porto", lat: 41.1579, lng: -8.6291 },
+  { city: "Braga", lat: 41.5454, lng: -8.4265 },
+  { city: "Coimbra", lat: 40.2033, lng: -8.4103 },
+  { city: "Aveiro", lat: 40.6405, lng: -8.6538 },
+  { city: "Faro", lat: 37.0194, lng: -7.9304 },
+  { city: "Setúbal", lat: 38.5244, lng: -8.8882 },
+  { city: "Leiria", lat: 39.7436, lng: -8.8071 },
+  { city: "Évora", lat: 38.5714, lng: -7.9135 },
+  { city: "Viseu", lat: 40.661, lng: -7.9097 },
+  { city: "Guimarães", lat: 41.4425, lng: -8.2918 },
+  { city: "Castelo Branco", lat: 39.8222, lng: -7.4909 },
+  { city: "Viana do Castelo", lat: 41.6918, lng: -8.8345 },
+  { city: "Santarém", lat: 39.2362, lng: -8.6853 },
+  { city: "Beja", lat: 38.0151, lng: -7.8632 },
+  { city: "Portalegre", lat: 39.2967, lng: -7.428 },
+  { city: "Bragança", lat: 41.806, lng: -6.7567 },
+  { city: "Guarda", lat: 40.5373, lng: -7.2658 },
+  { city: "Covilhã", lat: 40.2833, lng: -7.5033 },
+  { city: "Tomar", lat: 39.601, lng: -8.4092 },
+];
+
 // Generate user
 async function generateUser() {
   const hashedPassword = await bcrypt.hash("123456", 10);
+  const place = faker.helpers.arrayElement(cities);
+
   return {
     username: faker.internet.username(),
     email: faker.internet.email(),
     password: hashedPassword,
-    location: faker.address.city(),
-    latitude: parseFloat(faker.address.latitude()),
-    longitude: parseFloat(faker.address.longitude()),
+    location: place.city,
+    latitude: place.lat,
+    longitude: place.lng,
     isBanned: false,
   };
 }
