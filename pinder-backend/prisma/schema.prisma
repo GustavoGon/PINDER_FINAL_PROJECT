@@ -33,6 +33,8 @@ model User {
   password    String
   photo       String?
   location    String?
+  latitude    Float
+  longitude   Float
   dob         DateTime?
   description String?
   isBanned    Boolean 

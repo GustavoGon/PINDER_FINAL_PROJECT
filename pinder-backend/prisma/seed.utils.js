@@ -8,6 +8,9 @@ async function generateUser() {
     username: faker.internet.username(),
     email: faker.internet.email(),
     password: hashedPassword,
+    location: faker.address.city(),
+    latitude: parseFloat(faker.address.latitude()),
+    longitude: parseFloat(faker.address.longitude()),
     isBanned: false,
   };
 }
