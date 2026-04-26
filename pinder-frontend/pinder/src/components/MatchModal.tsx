@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Modal, TouchableOpacity, Animated, StyleSheet, Image } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import LottieView from 'lottie-react-native';
 
 interface MatchModalProps {
   visible: boolean;

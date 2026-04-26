@@ -10,10 +10,13 @@ import {
   ScrollView,
   ActivityIndicator,
   Modal,
-  FlatList
+  FlatList,
+  Image
 } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function Register() {
   const [username, setUsername] = useState('');
@@ -23,9 +26,11 @@ export default function Register() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [districts, setDistricts] = useState<any[]>([]);
-  const [loadingDistricts, setLoadingDistricts] = useState(true);
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
+  const [dob, setDob] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [districts, setDistricts] = useState<any[]>([]);
   
   const router = useRouter();
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
@@ -44,8 +49,27 @@ export default function Register() {
       }
     } catch (error) {
       console.error('Erro ao carregar distritos:', error);
-    } finally {
-      setLoadingDistricts(false);
+    }
+  };
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1], // Mantém a foto quadrada (tipo perfil)
+      quality: 0.5, // Reduz o tamanho da imagem para não sobrecarregar o servidor
+      base64: true, // Permite enviar a imagem diretamente via JSON
+    });
+
+    if (!result.canceled && result.assets[0].base64) {
+      setPhoto(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    }
+  };
+
+  const onChangeDate = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') setShowDatePicker(false);
+    if (selectedDate) {
+      setDob(selectedDate);
     }
   };
 
@@ -66,6 +90,8 @@ export default function Register() {
     setIsLoading(true);
 
     try {
+      console.log(`A enviar registo para: ${API_URL}/users`);
+      
       const response = await fetch(`${API_URL}/users`, {
         method: 'POST',
         headers: {
@@ -76,7 +102,9 @@ export default function Register() {
           username: username.trim(), 
           email: email.trim().toLowerCase(),
           password,
-          district: district
+          district: district,
+          dob: dob ? dob.toISOString() : null,
+          photo: photo
         }),
       });
 
@@ -115,6 +143,18 @@ export default function Register() {
           <Text style={styles.subtitle}>Junta-te a nós e encontra amigos para o teu pet!</Text>
           
           <View style={styles.form}>
+            {/* Selector de Foto de Perfil */}
+            <TouchableOpacity style={styles.photoContainer} onPress={pickImage}>
+              {photo ? (
+                <Image source={{ uri: photo }} style={styles.photoPreview} />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+                  <FontAwesome5 name="camera" size={30} color="#ff9950" />
+                  <Text style={styles.photoText}>Foto</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
             <TextInput 
               style={styles.inputField} 
               placeholder="Nome de Utilizador" 
@@ -138,6 +178,26 @@ export default function Register() {
               secureTextEntry={true}
             />
 
+            {/* Selector de Data de Nascimento */}
+            <TouchableOpacity 
+              style={styles.dateButton}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <FontAwesome5 name="calendar-alt" size={16} color="#ff9950" />
+              <Text style={[styles.dateButtonText, !dob && { color: '#999' }]}>
+                {dob ? dob.toLocaleDateString('pt-PT') : 'Data de Nascimento (Opcional)'}
+              </Text>
+            </TouchableOpacity>
+            {showDatePicker && (
+              <DateTimePicker
+                value={dob || new Date()}
+                mode="date"
+                display="default"
+                maximumDate={new Date()}
+                onChange={onChangeDate}
+              />
+            )}
+
             {/* Selector de Distrito */}
             <TouchableOpacity 
               style={styles.districtButton}
@@ -158,37 +218,54 @@ export default function Register() {
               onRequestClose={() => setShowDistrictPicker(false)}
             >
               <View style={styles.pickerContainer}>
-                <View style={styles.pickerHeader}>
-                  <TouchableOpacity onPress={() => setShowDistrictPicker(false)}>
-                    <Text style={styles.pickerHeaderText}>Fechar</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.pickerTitle}>Seleciona um Distrito</Text>
-                  <View style={{ width: 50 }} />
-                </View>
-                
-                <FlatList
-                  data={districts}
-                  keyExtractor={(item, index) => index.toString()}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity 
-                      style={[
-                        styles.districtOption,
-                        district === item.name && styles.districtOptionSelected
-                      ]}
-                      onPress={() => {
-                        setDistrict(item.name);
-                        setShowDistrictPicker(false);
-                      }}
-                    >
-                      <Text style={[
-                        styles.districtOptionText,
-                        district === item.name && styles.districtOptionTextSelected
-                      ]}>
-                        {item.name}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                {/* Fundo escuro que fecha o modal */}
+                <TouchableOpacity 
+                  style={StyleSheet.absoluteFill} 
+                  activeOpacity={1} 
+                  onPress={() => setShowDistrictPicker(false)}
                 />
+                
+                <View style={styles.pickerContent}>
+                  <View style={styles.pickerHeader}>
+                    <TouchableOpacity onPress={() => setShowDistrictPicker(false)}>
+                      <Text style={styles.pickerHeaderText}>Fechar</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.pickerTitle}>Seleciona um Distrito</Text>
+                    <View style={{ width: 50 }} />
+                  </View>
+                  
+                  {/* Se a lista estiver vazia, mostramos o carregamento */}
+                  {districts.length === 0 ? (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                      <ActivityIndicator size="large" color="#ff9950" />
+                      <Text style={{ marginTop: 10, color: '#666' }}>A carregar distritos...</Text>
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={districts}
+                      keyExtractor={(item, index) => index.toString()}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity 
+                          style={[
+                            styles.districtOption,
+                            district === item.name && styles.districtOptionSelected
+                          ]}
+                          onPress={() => {
+                            setDistrict(item.name);
+                            setShowDistrictPicker(false);
+                          }}
+                        >
+                          <Text style={[
+                            styles.districtOptionText,
+                            district === item.name && styles.districtOptionTextSelected
+                          ]}>
+                            {item.name}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    />
+                  )}
+                </View>
               </View>
             </Modal>
             
@@ -267,6 +344,49 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     color: '#333',
   },
+  photoContainer: {
+    alignSelf: 'center',
+    marginBottom: 25,
+  },
+  photoPreview: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 3,
+    borderColor: '#ff9950',
+  },
+  photoPlaceholder: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: '#FFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#D6CEC3',
+    borderStyle: 'dashed',
+  },
+  photoText: {
+    color: '#ff9950',
+    fontSize: 14,
+    marginTop: 6,
+    fontWeight: '600',
+  },
+  dateButton: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#D6CEC3',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dateButtonText: {
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#333',
+  },
   districtButton: {
     backgroundColor: 'white',
     borderWidth: 1,
@@ -288,6 +408,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+  },
+  pickerContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    height: '50%',
+    width: '100%',
   },
   pickerHeader: {
     backgroundColor: 'white',

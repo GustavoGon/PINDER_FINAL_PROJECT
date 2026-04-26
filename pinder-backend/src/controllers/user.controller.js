@@ -38,7 +38,7 @@ exports.getUsers = async (req, res) => {
 // POST /users
 exports.createUser = async (req, res) => {
   try {
-    const { username, email, password, district } = req.body;
+    const { username, email, password, district, dob, photo } = req.body;
 
     // basic validation
     if (!username || !email || !password) {
@@ -53,6 +53,8 @@ exports.createUser = async (req, res) => {
         email,
         password: hashedPassword,
         location: district || null,
+        dob: dob ? new Date(dob) : null,
+        photo: photo || null,
         isBanned: false
       },
     });
