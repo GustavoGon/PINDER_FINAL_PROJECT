@@ -11,6 +11,7 @@ import {
 import { useRouter, Link } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import { useActiveProfile } from '../src/contexts/ActiveProfileContext';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -19,6 +20,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   
   const router = useRouter(); 
+  const { setActiveProfile } = useActiveProfile();
 
   // Vai buscar a variável global, ou usa um valor de segurança caso o .env falhe
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
@@ -73,9 +75,14 @@ export default function Login() {
         
         // Guarda o utilizador usando a memória do telemóvel
         await AsyncStorage.setItem('user', JSON.stringify(userWithoutPhoto));
+        
+        const userId = data.user.user_id || data.user.id;
 
         // Tenta obter localização em background
-        updateUserLocation(data.user.user_id);
+        updateUserLocation(userId);
+
+        // Define imediatamente o perfil ativo (Tutor) no Contexto Global
+        setActiveProfile({ type: 'tutor', id: userId });
 
         // Redireciona para a página principal
         setTimeout(() => {
