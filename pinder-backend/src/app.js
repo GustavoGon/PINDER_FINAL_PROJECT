@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const prisma = require("./prisma");
+const http = require("http");
+const { Server } = require("socket.io");
 
 const userRoutes = require("./routes/user.routes");
 const petRoutes = require("./routes/pet.routes");
@@ -8,10 +10,10 @@ const interactionRoutes = require("./routes/interaction.routes");
 const matchRoutes = require("./routes/match.routes");
 const messageRoutes = require("./routes/message.routes");
 const recommendationRoutes = require("./routes/recommendation.routes");
-const speciesRoutes = require('./routes/species.routes');
-const breedRoutes = require('./routes/breed.routes');
-const groupRoutes = require('./routes/group.routes');
-const districtRoutes = require('./routes/district.routes');
+const speciesRoutes = require("./routes/species.routes");
+const breedRoutes = require("./routes/breed.routes");
+const groupRoutes = require("./routes/group.routes");
+const districtRoutes = require("./routes/district.routes");
 
 const app = express();
 
@@ -19,6 +21,9 @@ const app = express();
 app.use(cors()); // Permite que o seu front-end acesse a API
 app.use(express.json({ limit: "50mb" })); // Permite que o app entenda corpo de requisição em JSON e aumenta o limite para uploads de fotos
 app.use(express.urlencoded({ limit: "50mb", extended: true })); // Permite que o app entenda dados de formulário (para uploads de fotos)
+
+const server = http.createServer(app);
+const setupChatSockets = require("./sockets/chat.socket");
 
 // --- Rotas ---
 app.use("/users", userRoutes);
@@ -38,6 +43,8 @@ app.get("/", (req, res) => {
   res.status(200).send({ message: "Pinder API is running! 🚀" });
 });
 
+app.set("io", io);
+
 async function testConnection() {
   try {
     const result = await prisma.$queryRaw`SELECT 1`;
@@ -53,7 +60,11 @@ testConnection();
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT} e aberto para a rede Wi-Fi! 🌐`);
+  console.log(`Server running on port ${PORT}🌐`);
+});
+
+server.listen(PORT, () => {
+  console.log(`Websockets Server running on port ${PORT}`);
 });
 
 module.exports = app;

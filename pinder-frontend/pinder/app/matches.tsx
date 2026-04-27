@@ -76,13 +76,19 @@ export default function Matches() {
     }
   };
 
-  const handleMatchPress = (match: any) => {
-    // Ir para o chat deste match
-    router.push({
-      pathname: '/chat',
-      params: { matchId: match.match_id }
-    });
-  };
+const handleMatchPress = async (match: any) => {
+  const userStr = await AsyncStorage.getItem('user');
+  const currentUser = userStr ? JSON.parse(userStr) : {};
+  const userId = currentUser.user_id || currentUser.id;
+
+  router.push({
+    pathname: '/chat',
+    params: { 
+      matchId: match.match_id,
+      userId
+    }
+  });
+};
 
   const handleUnmatch = (matchId: string) => {
     Alert.alert(
