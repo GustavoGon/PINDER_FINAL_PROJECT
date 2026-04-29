@@ -26,3 +26,54 @@ exports.createMessage = async (req, res) => {
 
   res.status(201).json(message);
 };
+
+exports.markAsRead = async (req, res) => {
+  const { matchId } = req.params;
+  const { userId } = req.body;
+
+  await prisma.message.updateMany({
+    where: {
+      match_id: matchId,
+      sender_id: { not: userId }, // only messages from OTHER user
+      read: false,
+    },
+    data: { read: true },
+  });
+
+  res.json({ success: true });
+};
+
+exports.getUnreadCounts = async (req, res) => {
+  const { userId } = req.params;
+
+  const counts = await prisma.message.groupBy({
+    by: ["match_id"],
+    where: {
+      read: false,
+      sender_id: { not: userId },
+    },
+    _count: {
+      message_id: true,
+    },
+  });
+
+  res.json(counts);
+};
+
+exports.getLastMessages = async (req, res) => {
+  const { userId } = req.params;
+
+  const matches = await prisma.match.findMany({
+    where: {
+      unmatched: false,
+    },
+    include: {
+      messages: {
+        orderBy: { timestamp: "desc" },
+        take: 1,
+      },
+    },
+  });
+
+  res.json(matches);
+};

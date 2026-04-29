@@ -192,6 +192,9 @@ model Message {
   timestamp  DateTime @default(now())
   content    String
 
+  // 🆕 NEW
+  read       Boolean  @default(false)
+
   match  Match @relation(fields: [match_id], references: [match_id])
   sender User  @relation(fields: [sender_id], references: [user_id])
 

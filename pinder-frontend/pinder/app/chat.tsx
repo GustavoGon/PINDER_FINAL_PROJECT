@@ -24,13 +24,15 @@ export default function Chat() {
       .then(res => res.json())
       .then(data => setMessages(data))
       .catch(err => console.log(err));
-  }, [matchId]);
+  }, [matchIdStr]);
 
   // 🔹 Socket connection
   useEffect(() => {
-    socket.connect();
+    if (!socket.connected) {
+  socket.connect();
+}
 
-    socket.emit("join_chat", { matchIdStr });
+    socket.emit("join_chat", { matchId: matchIdStr });
 
      const handleMessage = (msg: any) => {
     setMessages(prev => [...prev, msg]);
@@ -39,8 +41,8 @@ export default function Chat() {
   socket.on("receive_message", handleMessage);
 
     return () => {
-      socket.emit("leave_chat", { matchIdStr });
-      socket.off("receive_message");
+      socket.emit("leave_chat", { matchId: matchIdStr });
+      socket.off("receive_message", handleMessage);
       socket.disconnect();
     };
   }, [matchIdStr]);
@@ -52,8 +54,6 @@ export default function Chat() {
     content: input,
     sender_id: userIdStr
   };
-
-  setMessages(prev => [...prev, tempMessage]);
 
   socket.emit("send_message", {
     matchId: matchIdStr,
@@ -73,12 +73,12 @@ export default function Chat() {
 
       <FlatList
         data={messages}
-        keyExtractor={(item, index) => index.toString()}
+        keyExtractor={(item) => item.message_id || Math.random().toString()}
         contentContainerStyle={{ padding: 10 }}
         renderItem={({ item }) => (
           <View style={[
             styles.messageBubble,
-            item.sender_id === userId ? styles.myMessage : styles.otherMessage
+            item.sender_id === userIdStr ? styles.myMessage : styles.otherMessage
           ]}>
             <Text style={styles.messageText}>{item.content}</Text>
           </View>
