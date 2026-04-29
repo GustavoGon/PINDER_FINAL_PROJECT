@@ -14,16 +14,15 @@ const speciesRoutes = require("./routes/species.routes");
 const breedRoutes = require("./routes/breed.routes");
 const groupRoutes = require("./routes/group.routes");
 const districtRoutes = require("./routes/district.routes");
-
+const uploadRoutes = require("./routes/upload.routes");
+const setupChatSockets = require("./sockets/chat.socket");
 const app = express();
+const server = http.createServer(app);
 
 // --- Middlewares ---
 app.use(cors()); // Permite que o seu front-end acesse a API
 app.use(express.json({ limit: "50mb" })); // Permite que o app entenda corpo de requisição em JSON e aumenta o limite para uploads de fotos
 app.use(express.urlencoded({ limit: "50mb", extended: true })); // Permite que o app entenda dados de formulário (para uploads de fotos)
-
-const server = http.createServer(app);
-const setupChatSockets = require("./sockets/chat.socket");
 
 // --- Rotas ---
 app.use("/users", userRoutes);
@@ -35,12 +34,18 @@ app.use("/matches", matchRoutes);
 app.use("/messages", messageRoutes);
 app.use("/groups", groupRoutes);
 app.use("/districts", districtRoutes);
-app.use("/uploads", express.static("uploads"));
+app.use("/upload", uploadRoutes);
 app.use("/recommendations", recommendationRoutes);
 
 // Rota de teste inicial
 app.get("/", (req, res) => {
   res.status(200).send({ message: "Pinder API is running! 🚀" });
+});
+
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+  },
 });
 
 app.set("io", io);
