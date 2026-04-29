@@ -76,19 +76,21 @@ export default function Matches() {
     }
   };
 
-const handleMatchPress = async (match: any) => {
-  const userStr = await AsyncStorage.getItem('user');
-  const currentUser = userStr ? JSON.parse(userStr) : {};
-  const userId = currentUser.user_id || currentUser.id;
+  const handleMatchPress = async (match: any) => {
+    const userStr = await AsyncStorage.getItem('user');
+    const currentUser = userStr ? JSON.parse(userStr) : {};
+    const userId = currentUser.user_id || currentUser.id;
+    const otherPet = match.pet1?.pet_id === activeProfile?.id ? match.pet2 : match.pet1;
 
-  router.push({
-    pathname: '/chat',
-    params: { 
-      matchId: match.match_id,
-      userId
-    }
-  });
-};
+    router.push({
+      pathname: '/chatDetail',
+      params: {
+        matchId: match.match_id,
+        userId,
+        petName: otherPet?.name || 'Chat',
+      },
+    });
+  };
 
   const handleUnmatch = (matchId: string) => {
     Alert.alert(
