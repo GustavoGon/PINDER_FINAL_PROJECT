@@ -24,6 +24,32 @@ const cities = [
   { city: "Tomar", lat: 39.601, lng: -8.4092 },
 ];
 
+const PREFERENCES = [
+  "pref_playful",
+  "pref_calm",
+  "pref_affectionate",
+  "pref_independent",
+  "pref_high_energy",
+  "pref_low_energy",
+  "pref_good_with_kids",
+  "pref_good_with_pets",
+  "pref_apartment",
+  "pref_needs_yard",
+  "pref_low_maintenance",
+  "pref_high_grooming",
+];
+
+function getRandomPreferences(count = 3) {
+  const unique = new Set();
+
+  while (unique.size < count) {
+    const random = PREFERENCES[Math.floor(Math.random() * PREFERENCES.length)];
+    unique.add(random);
+  }
+
+  return Array.from(unique);
+}
+
 // Generate user
 async function generateUser() {
   const hashedPassword = await bcrypt.hash("123456", 10);
@@ -48,7 +74,7 @@ function generatePet(userId, speciesId, breedId) {
     species_id: speciesId,
     breed_id: breedId,
     description: faker.lorem.sentence(),
-    forAdoption: false,
+    forAdoption: Math.random() > 0.1,
   };
 }
 
@@ -102,4 +128,5 @@ module.exports = {
   generatePhoto,
   parseRange,
   normalizeHeaders,
+  getRandomPreferences,
 };
