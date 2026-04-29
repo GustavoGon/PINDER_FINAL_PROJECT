@@ -8,9 +8,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 import BottomNav from '../src/components/BottomNav';
 
 interface Adoption {
@@ -24,7 +27,7 @@ interface Adoption {
     name: string;
     main_photo: string;
     breed: { name: string };
-    owner: { username: string };
+    owner: { username: string; user_id: string };
   };
 }
 
@@ -32,7 +35,10 @@ export default function Adoptions() {
   const [adoptions, setAdoptions] = useState<Adoption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  const [selectedPet, setSelectedPet] = useState<Adoption | null>(null);
+  const [showActionModal, setShowActionModal] = useState(false);
+  
+  const router = useRouter();
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
 
   useEffect(() => {
@@ -80,8 +86,44 @@ export default function Adoptions() {
     return age === 1 ? '1 ano' : `${age} anos`;
   };
 
+  const handlePetPress = (adoption: Adoption) => {
+    setSelectedPet(adoption);
+    setShowActionModal(true);
+  };
+
+  const handleViewProfile = () => {
+    // Navegar para o perfil do pet (se existir rota)
+    setShowActionModal(false);
+    if (selectedPet?.pet.pet_id) {
+      router.push({
+        pathname: '/petProfile',
+        params: { petId: selectedPet.pet.pet_id }
+      });
+    }
+  };
+
+  const handleSendMessage = async () => {
+    setShowActionModal(false);
+    if (selectedPet?.pet.owner.user_id) {
+      // Navegar para o chat com o dono do pet
+      router.push({
+        pathname: '/chatDetail',
+        params: { 
+          userId: selectedPet.pet.owner.user_id,
+          userName: selectedPet.pet.owner.username,
+          petId: selectedPet.pet.pet_id,
+          petName: selectedPet.pet.name
+        }
+      });
+    }
+  };
+
   const renderAdoptionItem = ({ item }: { item: Adoption }) => (
-    <TouchableOpacity style={styles.adoptionCard}>
+    <TouchableOpacity 
+      style={styles.adoptionCard}
+      onPress={() => handlePetPress(item)}
+      activeOpacity={0.7}
+    >
       <View style={styles.cardContent}>
         {/* Foto */}
         <Image
@@ -175,6 +217,67 @@ export default function Adoptions() {
           showsVerticalScrollIndicator={false}
         />
       </View>
+
+      {/* ACTION MODAL */}
+      <Modal
+        visible={showActionModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowActionModal(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setShowActionModal(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            {selectedPet && (
+              <>
+                {/* Pet Info */}
+                <View style={styles.modalHeader}>
+                  <Image
+                    source={{ uri: selectedPet.pet.main_photo || 'https://placehold.co/100x100/eeeeee/999999?text=Sem+Foto' }}
+                    style={styles.modalPetImage}
+                  />
+                  <View style={styles.modalPetInfo}>
+                    <Text style={styles.modalPetName}>{selectedPet.pet.name}</Text>
+                    <Text style={styles.modalBreed}>{selectedPet.pet.breed?.name || 'Raça não definida'}</Text>
+                    <Text style={styles.modalOwner}>
+                      <FontAwesome5 name="user" size={12} color="#5C4A3D" /> {selectedPet.pet.owner?.username}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Action Buttons */}
+                <View style={styles.modalActions}>
+                  <TouchableOpacity 
+                    style={[styles.actionButton, styles.viewProfileBtn]}
+                    onPress={handleViewProfile}
+                  >
+                    <FontAwesome5 name="eye" size={18} color="white" />
+                    <Text style={styles.actionButtonText}>Ver Perfil</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.actionButton, styles.messageBtn]}
+                    onPress={handleSendMessage}
+                  >
+                    <FontAwesome5 name="comment" size={18} color="white" />
+                    <Text style={styles.actionButtonText}>Mandar Mensagem</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Close Button */}
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setShowActionModal(false)}
+                >
+                  <Text style={styles.closeButtonText}>Fechar</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <BottomNav activePage="adoptions" />
     </View>
@@ -282,5 +385,86 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 20,
     lineHeight: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    width: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 15,
+  },
+  modalPetImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    backgroundColor: '#eee',
+  },
+  modalPetInfo: {
+    flex: 1,
+  },
+  modalPetName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  modalBreed: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 6,
+  },
+  modalOwner: {
+    fontSize: 12,
+    color: '#999',
+  },
+  modalActions: {
+    gap: 12,
+    marginBottom: 15,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 10,
+  },
+  viewProfileBtn: {
+    backgroundColor: '#5C4A3D',
+  },
+  messageBtn: {
+    backgroundColor: '#4CAF50',
+  },
+  actionButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  closeButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  closeButtonText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

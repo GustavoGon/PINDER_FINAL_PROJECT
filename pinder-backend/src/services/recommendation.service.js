@@ -47,7 +47,7 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     throw new Error("Add location or district to profile");
   }
 
-  // 👀 Seen pets (only for normal mode)
+  // 👀 Seen pets
   let seenIds = [];
   if (mode === "normal") {
     const seen = await prisma.interaction.findMany({
@@ -56,6 +56,14 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     });
 
     seenIds = seen.map((s) => s.target_pet_id);
+  } else if (mode === "adoption") {
+    // 👀 Para modo adoption: buscar pets já interagidos
+    const seen = await prisma.tutorAdoptionInteraction.findMany({
+      where: { tutor_id: user_id },
+      select: { pet_id: true },
+    });
+
+    seenIds = seen.map((s) => s.pet_id);
   }
 
   // 🐾 Candidates

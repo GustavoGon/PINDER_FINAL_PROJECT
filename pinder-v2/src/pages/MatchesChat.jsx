@@ -1,52 +1,98 @@
-import React from 'react';
-import { FaPaw, FaSearch, FaHome, FaUsers, FaComments, FaUser } from 'react-icons/fa';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { FaPaw, FaSearch, FaHome, FaUsers, FaComments, FaUser, FaSpinner } from 'react-icons/fa';
+import { useActiveProfile } from '../contexts/ActiveProfileContext';
 import './css/MatchesChat.css';
 import BottomNav from '../components/BottomNav';
 
 export default function MatchesChat() {
-  //TODO - lista de conversas enquanto ainda não temos BD
-  const chatList = [
-    {
-      id: 1,
-      name: "Max",
-      breed: "Labrador Retriever",
-      msg: "Woof! Vamos brincar no parque?",
-      time: "10:40",
-      unread: 0,
-      img: "https://images.unsplash.com/photo-1529815481058-55e5b656f6d6?ixlib=rb-4.0.3&auto=format&fit=crop&w=150&q=80"
-    },
-    {
-      id: 2,
-      name: "Luna",
-      breed: "French Bulldog",
-      msg: "*Lick* Vi que curtiu o meu perfil!",
-      time: "10:35",
-      unread: 2,
-      img: "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?ixlib=rb-4.0.3&auto=format&fit=crop&w=150&q=80"
-    },
-    {
-      id: 3,
-      name: "Cooper",
-      breed: "Beagle",
-      msg: "Encontrei um pau ótimo! Vem ver?",
-      time: "Ontem",
-      unread: 1,
-      img: "https://images.unsplash.com/photo-1537151608804-ea2f1ea14a15?ixlib=rb-4.0.3&auto=format&fit=crop&w=150&q=80"
-    },
-    {
-      id: 4,
-      name: "Pog",
-      breed: "Moma!",
-      msg: "😉",
-      time: "Ontem",
-      unread: 0,
-      img: "https://images.unsplash.com/photo-1552053831-71594a27632d?ixlib=rb-4.0.3&auto=format&fit=crop&w=150&q=80"
+  const navigate = useNavigate();
+  const { activeProfile } = useActiveProfile();
+  const [chatList, setChatList] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  const API_URL = import.meta.env.VITE_API_URL;
+
+  useEffect(() => {
+    fetchConversations();
+  }, [activeProfile]);
+
+  const fetchConversations = async () => {
+    try {
+      setIsLoading(true);
+
+      // Se é PET: buscar conversas (matches)
+      if (activeProfile?.type === 'pet' && activeProfile?.id) {
+        const response = await fetch(`${API_URL}/matches?petId=${activeProfile.id}`);
+        
+        if (response.ok) {
+          const matches = await response.json();
+          
+          // Transformar dados para formato de chat
+          const chats = matches.map((match) => {
+            // Determinar qual é o outro pet (não o nosso)
+            const isUserPet1 = match.pet_1_id === activeProfile.id;
+            const otherPet = isUserPet1 ? match.pet2 : match.pet1;
+            
+            // Pegar última mensagem (simulado por enquanto)
+            const lastMessage = match.messages?.[0]?.content || 'Sem mensagens ainda';
+            
+            return {
+              id: match.match_id,
+              name: otherPet.name,
+              breed: otherPet.breed?.name || 'Raça não definida',
+              msg: lastMessage,
+              time: match.messages?.[0] ? formatTime(new Date(match.messages[0].timestamp)) : 'Agora',
+              unread: 0,
+              img: otherPet.main_photo || 'https://placehold.co/150x150/eeeeee/999999?text=Sem+Foto',
+              petId: otherPet.pet_id,
+              ownerId: otherPet.owner?.user_id
+            };
+          });
+          
+          setChatList(chats);
+        }
+      } 
+      // Se é TUTOR: mostrar mensagem informativa (futuro: conversas com donos)
+      else if (activeProfile?.type === 'tutor') {
+        setChatList([]);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar conversas:', error);
+    } finally {
+      setIsLoading(false);
     }
-  ];
+  };
+
+  const formatTime = (date) => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const isToday = date.toDateString() === today.toDateString();
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+    
+    if (isToday) {
+      return date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+    } else if (isYesterday) {
+      return 'Ontem';
+    } else {
+      return date.toLocaleDateString('pt-PT', { month: 'short', day: 'numeric' });
+    }
+  };
+
+  const handleChatPress = (chat) => {
+    navigate('/chatDetail', { state: { matchId: chat.id, petName: chat.name } });
+  };
+
+  const filteredChats = chatList.filter(chat =>
+    chat.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    chat.breed.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="chat-container">
-      
       <div className="chat-header-area">
         <header className="chat-header">
           <h1 className="logo-title">
@@ -57,36 +103,71 @@ export default function MatchesChat() {
         <div className="search-container">
           <div className="search-bar">
             <FaSearch className="search-icon" />
-            <input type="text" placeholder="Pesquisar conversas..." />
+            <input 
+              type="text" 
+              placeholder="Pesquisar conversas..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
         </div>
       </div>
 
       <main className="chat-list">
-        {chatList.map((chat) => (
-          <div className="chat-item" key={chat.id}>
-            <img src={chat.img} alt={chat.name} className="chat-avatar" />
-            
-            <div className="chat-content">
-              <div className="chat-row-top">
-                <span className="chat-name">{chat.name}</span>
-                <span className="chat-time">{chat.time}</span>
-              </div>
+        {isLoading ? (
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <FaSpinner className="spinner" style={{ animation: 'spin 1s linear infinite', fontSize: '32px', color: '#5C4A3D' }} />
+            <p style={{ color: '#999', marginTop: '10px' }}>A carregar conversas...</p>
+          </div>
+        ) : chatList.length === 0 && activeProfile?.type === 'tutor' ? (
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <FaComments style={{ fontSize: '48px', color: '#D6CEC3', marginBottom: '10px' }} />
+            <p style={{ color: '#999', fontSize: '14px' }}>
+              {activeProfile?.type === 'tutor' 
+                ? 'Conversas aparecem após fazer interesse em um pet' 
+                : 'Sem conversas no momento'}
+            </p>
+          </div>
+        ) : chatList.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <FaComments style={{ fontSize: '48px', color: '#D6CEC3', marginBottom: '10px' }} />
+            <p style={{ color: '#999', fontSize: '14px' }}>Sem conversas no momento. Faz um match para conversar!</p>
+          </div>
+        ) : filteredChats.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <FaSearch style={{ fontSize: '32px', color: '#D6CEC3', marginBottom: '10px' }} />
+            <p style={{ color: '#999', fontSize: '14px' }}>Nenhuma conversa encontrada</p>
+          </div>
+        ) : (
+          filteredChats.map((chat) => (
+            <div 
+              className="chat-item" 
+              key={chat.id}
+              onClick={() => handleChatPress(chat)}
+              style={{ cursor: 'pointer' }}
+            >
+              <img src={chat.img} alt={chat.name} className="chat-avatar" />
               
-              <span className="chat-breed">{chat.breed}</span>
-              
-              <div className="chat-row-bottom">
-                <span className="chat-msg">{chat.msg}</span>
-                {/* Só mostra a bolinha verde se houver mensagens não lidas */}
-                {chat.unread > 0 && (
-                  <span className="chat-unread-badge">{chat.unread}</span>
-                )}
+              <div className="chat-content">
+                <div className="chat-row-top">
+                  <span className="chat-name">{chat.name}</span>
+                  <span className="chat-time">{chat.time}</span>
+                </div>
+                
+                <span className="chat-breed">{chat.breed}</span>
+                
+                <div className="chat-row-bottom">
+                  <span className="chat-msg">{chat.msg}</span>
+                  {chat.unread > 0 && (
+                    <span className="chat-unread-badge">{chat.unread}</span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </main>
-        <BottomNav activePage="chat" />
+      <BottomNav activePage="chat" />
     </div>
   );
 }
