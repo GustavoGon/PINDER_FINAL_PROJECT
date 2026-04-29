@@ -3,9 +3,10 @@ const router = express.Router();
 const messageController = require("../controllers/message.controller");
 
 router.post("/direct", messageController.getOrCreateDirectConversation);
+router.get("/conversations/:userId", messageController.getConversations);
+router.get("/unread/:userId", messageController.getUnreadCounts);
 router.get("/:matchId", messageController.getMessages);
 router.post("/", messageController.createMessage);
 router.post("/:matchId/read", messageController.markAsRead);
-router.get("/unread/:userId", messageController.getUnreadCounts);
 
 module.exports = router;

@@ -11,7 +11,7 @@ import {
   TextInput,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useActiveProfile } from '../src/contexts/ActiveProfileContext';
 import BottomNav from '../src/components/BottomNav';
@@ -29,12 +29,18 @@ export default function Chat() {
     fetchConversations();
   }, [activeProfile?.id, activeProfile?.type]);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchConversations();
+    }, [activeProfile?.id, activeProfile?.type])
+  );
+
   const fetchConversations = async () => {
     try {
       setIsLoading(true);
       setConversations([]);
 
-      if (!activeProfile?.id || activeProfile?.type !== 'pet') {
+      if (!activeProfile?.id) {
         return;
       }
 
@@ -42,52 +48,23 @@ export default function Chat() {
       const currentUser = userStr ? JSON.parse(userStr) : {};
       const myUserId = currentUser.user_id || currentUser.id;
 
-      const userPetsResponse = await fetch(`${API_URL}/pets/user/${myUserId}`);
-      if (!userPetsResponse.ok) {
-        throw new Error('Erro ao carregar pets');
-      }
-
-      const userPets = await userPetsResponse.json();
-      if (!userPets.length) {
+      if (!myUserId) {
         return;
       }
 
-      const chatMap = new Map<string, any>();
-
-      for (const pet of userPets) {
-        const matchesResponse = await fetch(`${API_URL}/matches?petId=${pet.pet_id}`);
-        if (!matchesResponse.ok) {
-          continue;
-        }
-
-        const matches = await matchesResponse.json();
-
-        for (const match of matches) {
-          const otherPet = match.pet1?.pet_id === pet.pet_id ? match.pet2 : match.pet1;
-          if (!otherPet) {
-            continue;
-          }
-
-          const messagesResponse = await fetch(`${API_URL}/messages/${match.match_id}`);
-          const messages = messagesResponse.ok ? await messagesResponse.json() : [];
-          const lastMessage = messages.length ? messages[messages.length - 1] : null;
-
-          chatMap.set(match.match_id, {
-            id: match.match_id,
-            name: otherPet.name,
-            breed: otherPet.breed?.name || 'Raça não definida',
-            msg: lastMessage?.content || 'Sem mensagens ainda',
-            time: lastMessage ? formatTime(new Date(lastMessage.timestamp)) : 'Agora',
-            unread: 0,
-            img: otherPet.main_photo || 'https://placehold.co/150x150/eeeeee/999999?text=Sem+Foto',
-            matchId: match.match_id,
-            otherPetId: otherPet.pet_id,
-            otherUserId: otherPet.owner?.user_id,
-          });
-        }
+      const conversationsResponse = await fetch(`${API_URL}/messages/conversations/${myUserId}`);
+      if (!conversationsResponse.ok) {
+        throw new Error('Erro ao carregar conversas');
       }
 
-      setConversations(Array.from(chatMap.values()));
+      const conversationsData = await conversationsResponse.json();
+      setConversations(
+        conversationsData.map((conversation: any) => ({
+          ...conversation,
+          time: conversation.time ? formatTime(new Date(conversation.time)) : 'Agora',
+          unread: conversation.unread || 0,
+        }))
+      );
     } catch (error) {
       console.error('Erro ao carregar conversas:', error);
     } finally {
@@ -154,14 +131,6 @@ export default function Chat() {
         <View style={styles.emptyState}>
           <ActivityIndicator size="large" color="#5C4A3D" />
         </View>
-      ) : activeProfile?.type !== 'pet' ? (
-        <View style={styles.emptyState}>
-          <FontAwesome5 name="comments" size={42} color="#D6CEC3" solid />
-          <Text style={styles.emptyTitle}>Sem conversas abertas</Text>
-          <Text style={styles.emptyText}>
-            As conversas aparecem aqui quando houver interações de adoção com pets.
-          </Text>
-        </View>
       ) : filteredConversations.length === 0 ? (
         <View style={styles.emptyState}>
           <FontAwesome5 name="comments" size={42} color="#D6CEC3" solid />
@@ -180,7 +149,14 @@ export default function Chat() {
               <Image source={{ uri: item.img }} style={styles.avatar} />
               <View style={styles.chatContent}>
                 <View style={styles.chatRowTop}>
-                  <Text style={styles.chatName}>{item.name}</Text>
+                  <View style={styles.chatTitleRow}>
+                    <Text style={styles.chatName}>{item.name}</Text>
+                    {item.isInterested && (
+                      <View style={styles.interestedBadge}>
+                        <Text style={styles.interestedBadgeText}>Interessado</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.chatTime}>{item.time}</Text>
                 </View>
                 <Text style={styles.chatBreed}>{item.breed}</Text>
@@ -268,6 +244,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  chatTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
+    paddingRight: 12,
+  },
   chatName: {
     fontSize: 16,
     fontWeight: '700',
@@ -293,6 +276,21 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#5C4A3D',
+  },
+  interestedBadge: {
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#BFE4C2',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  interestedBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2E7D32',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
   },
   unreadBadge: {
     backgroundColor: '#4CAF50',

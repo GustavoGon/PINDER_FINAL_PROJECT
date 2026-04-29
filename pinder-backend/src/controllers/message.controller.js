@@ -1,5 +1,34 @@
 const prisma = require("../prisma");
 
+function buildConversationEntry(match, currentUserId) {
+  const pet1 = match.pet1;
+  const pet2 = match.pet2;
+  const currentUserOwnsPet1 = pet1?.owner?.user_id === currentUserId;
+  const currentUserOwnsPet2 = pet2?.owner?.user_id === currentUserId;
+
+  const otherPet = currentUserOwnsPet1 ? pet2 : pet1;
+  const lastMessage = match.messages?.[0] || null;
+
+  if (!otherPet) {
+    return null;
+  }
+
+  return {
+    id: match.match_id,
+    name: otherPet.name,
+    breed: otherPet.breed?.name || "Raça não definida",
+    msg: lastMessage?.content || "Sem mensagens ainda",
+    time: lastMessage ? lastMessage.timestamp : match.timestamp,
+    unread: 0,
+    img: otherPet.main_photo || "https://placehold.co/150x150/eeeeee/999999?text=Sem+Foto",
+    matchId: match.match_id,
+    otherPetId: otherPet.pet_id,
+    otherUserId: otherPet.owner?.user_id,
+    isInterested: Boolean(match.is_adoption),
+    _sortTimestamp: lastMessage?.timestamp || match.timestamp,
+  };
+}
+
 // POST /messages/direct - Criar ou reutilizar uma conversa direta entre dois pets
 exports.getOrCreateDirectConversation = async (req, res) => {
   try {
@@ -123,6 +152,107 @@ exports.getUnreadCounts = async (req, res) => {
   });
 
   res.json(counts);
+};
+
+exports.getConversations = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const userPets = await prisma.pet.findMany({
+      where: { user_id: userId },
+      select: { pet_id: true },
+    });
+
+    const petIds = userPets.map((pet) => pet.pet_id);
+    const conversationMap = new Map();
+
+    if (petIds.length > 0) {
+      const matches = await prisma.match.findMany({
+        where: {
+          unmatched: false,
+          OR: [
+            ...petIds.map((petId) => ({ pet_1_id: petId })),
+            ...petIds.map((petId) => ({ pet_2_id: petId })),
+          ],
+        },
+        include: {
+          pet1: { include: { owner: true, breed: true } },
+          pet2: { include: { owner: true, breed: true } },
+          messages: {
+            orderBy: { timestamp: "desc" },
+            take: 1,
+          },
+        },
+      });
+
+      matches.forEach((match) => {
+        const entry = buildConversationEntry(match, userId);
+        if (entry) {
+          conversationMap.set(entry.id, entry);
+        }
+      });
+    }
+
+    const adoptionInteractions = await prisma.tutorAdoptionInteraction.findMany({
+      where: {
+        tutor_id: userId,
+        like_dislike: true,
+      },
+      include: {
+        pet: {
+          include: {
+            owner: true,
+            breed: true,
+          },
+        },
+      },
+      orderBy: { timestamp: "desc" },
+    });
+
+    for (const adoption of adoptionInteractions) {
+      const directMatch = await prisma.match.findFirst({
+        where: {
+          unmatched: false,
+          is_adoption: true,
+          OR: petIds.length
+            ? [
+                ...petIds.flatMap((petId) => [
+                  { pet_1_id: petId, pet_2_id: adoption.pet_id },
+                  { pet_1_id: adoption.pet_id, pet_2_id: petId },
+                ]),
+                { pet_1_id: adoption.pet_id, pet_2_id: adoption.pet_id },
+              ]
+            : [{ pet_1_id: adoption.pet_id, pet_2_id: adoption.pet_id }],
+        },
+        include: {
+          pet1: { include: { owner: true, breed: true } },
+          pet2: { include: { owner: true, breed: true } },
+          messages: {
+            orderBy: { timestamp: "desc" },
+            take: 1,
+          },
+        },
+      });
+
+      if (!directMatch) {
+        continue;
+      }
+
+      const entry = buildConversationEntry(directMatch, userId);
+      if (entry) {
+        conversationMap.set(entry.id, entry);
+      }
+    }
+
+    const conversations = Array.from(conversationMap.values())
+      .sort((left, right) => new Date(right._sortTimestamp).getTime() - new Date(left._sortTimestamp).getTime())
+      .map(({ _sortTimestamp, ...conversation }) => conversation);
+
+    res.json(conversations);
+  } catch (error) {
+    console.error("Erro ao carregar conversas:", error);
+    res.status(500).json({ error: "Erro ao carregar conversas" });
+  }
 };
 
 exports.getLastMessages = async (req, res) => {
