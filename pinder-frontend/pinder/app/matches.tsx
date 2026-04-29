@@ -88,6 +88,7 @@ export default function Matches() {
         matchId: match.match_id,
         userId,
         petName: otherPet?.name || 'Chat',
+        petPhoto: otherPet?.main_photo || '',
       },
     });
   };

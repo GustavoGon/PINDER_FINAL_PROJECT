@@ -5,8 +5,10 @@ import {
   StyleSheet,
   Platform,
   FlatList,
+  Image,
   TextInput,
   TouchableOpacity,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -14,11 +16,12 @@ import socket from '../src/services/socket';
 
 export default function ChatDetail() {
   const router = useRouter();
-  const { matchId, userId, petName } = useLocalSearchParams();
+  const { matchId, userId, petName, petPhoto } = useLocalSearchParams();
 
   const matchIdStr = String(matchId || '');
   const userIdStr = String(userId || '');
   const petNameStr = String(petName || 'Chat');
+  const petPhotoStr = String(petPhoto || 'https://placehold.co/120x120/eeeeee/999999?text=Sem+Foto');
 
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
@@ -34,6 +37,12 @@ export default function ChatDetail() {
       .then((res) => res.json())
       .then((data) => setMessages(data))
       .catch((err) => console.log(err));
+
+    fetch(`${API_URL}/messages/${matchIdStr}/read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: userIdStr }),
+    }).catch((err) => console.log(err));
   }, [matchIdStr]);
 
   useEffect(() => {
@@ -75,12 +84,19 @@ export default function ChatDetail() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <FontAwesome5 name="chevron-left" size={16} color="#5C4A3D" />
         </TouchableOpacity>
-        <View>
+
+        <Image source={{ uri: petPhotoStr }} style={styles.petAvatar} />
+
+        <View style={styles.headerInfo}>
           <Text style={styles.headerTitle}>{petNameStr}</Text>
           <Text style={styles.headerSubtitle}>Chat aberto</Text>
         </View>
@@ -90,6 +106,7 @@ export default function ChatDetail() {
         data={messages}
         keyExtractor={(item) => item.message_id || `${item.timestamp}-${item.content}`}
         contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
+        keyboardShouldPersistTaps="handled"
         renderItem={({ item }) => (
           <View
             style={[
@@ -109,13 +126,14 @@ export default function ChatDetail() {
           placeholder="Escreve uma mensagem..."
           style={styles.input}
           placeholderTextColor="#A9A096"
+          multiline
         />
 
         <TouchableOpacity onPress={sendMessage} style={styles.sendBtn}>
           <FontAwesome5 name="paper-plane" size={16} color="white" />
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -139,6 +157,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F5F2EB',
+  },
+  petAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#eee',
+  },
+  headerInfo: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: 18,
@@ -173,6 +200,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: '#ddd',
     backgroundColor: 'white',
+    alignItems: 'flex-end',
   },
   input: {
     flex: 1,
@@ -180,6 +208,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     minHeight: 44,
+    maxHeight: 110,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
   sendBtn: {
     marginLeft: 10,
@@ -187,5 +218,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 12,
     justifyContent: 'center',
+    minHeight: 44,
   },
 });

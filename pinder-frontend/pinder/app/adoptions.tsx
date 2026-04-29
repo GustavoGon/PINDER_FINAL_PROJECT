@@ -112,7 +112,8 @@ export default function Adoptions() {
           userId: selectedPet.pet.owner.user_id,
           userName: selectedPet.pet.owner.username,
           petId: selectedPet.pet.pet_id,
-          petName: selectedPet.pet.name
+          petName: selectedPet.pet.name,
+          petPhoto: selectedPet.pet.main_photo || '',
         }
       });
     }

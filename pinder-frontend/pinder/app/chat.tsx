@@ -118,6 +118,7 @@ export default function Chat() {
         matchId: chat.matchId,
         userId: chat.otherUserId || '',
         petName: chat.name,
+        petPhoto: chat.img,
       },
     });
   };
