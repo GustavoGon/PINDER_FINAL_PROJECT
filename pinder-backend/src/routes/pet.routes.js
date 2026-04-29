@@ -4,11 +4,6 @@ const petController = require("../controllers/pet.controller");
 const upload = require("../middleware/upload");
 
 
-router.get('/feed', petController.getFeedPets);
-
-// Rota para obter recomendações inteligentes para um pet
-router.get('/recommendations/:pet_id', petController.getRecommendationsPets);
-
 // 🆕 Rotas de adoção (tutor)
 router.post('/adoptions', petController.saveAdoptionInteraction);
 router.get('/adoptions/user/:tutor_id', petController.getTutorAdoptions);

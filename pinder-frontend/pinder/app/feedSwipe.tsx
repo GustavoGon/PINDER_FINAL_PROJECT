@@ -35,7 +35,6 @@ export default function FeedSwipe() {
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [showAdoptionModal, setShowAdoptionModal] = useState(false);
   const [adoptedPet, setAdoptedPet] = useState<any>(null);
-  const [skip, setSkip] = useState(0);
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
@@ -69,7 +68,7 @@ export default function FeedSwipe() {
           console.log(`🐾 Modo PET: Carregando recomendações para ${activeProfile.id}`);
           
           const recommendationsResponse = await fetch(
-            `${API_URL}/pets/recommendations/${activeProfile.id}`
+            `${API_URL}/recommendations?pet_id=${activeProfile.id}&mode=normal`
           );
           
           if (recommendationsResponse.ok) {
@@ -82,21 +81,17 @@ export default function FeedSwipe() {
         } 
         // 👤 Se é TUTOR: Mostrar pets para adoção próximos
         else if (activeProfile.type === 'tutor') {
-          console.log(`👤 Modo TUTOR: Carregando pets para adoção`);
+          console.log(`👤 Modo TUTOR: Carregando recomendações de adoção`);
           
-          const userResponse = await fetch(`${API_URL}/users/${myUserId}`);
-          if (userResponse.ok) {
-            const userData = await userResponse.json();
-            
-            // Buscar pets para adoção (usar o endpoint de feed com forAdoption=true)
-            const forAdoptionResponse = await fetch(
-              `${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=true&userId=${myUserId}&skip=0`
-            );
-            
-            if (forAdoptionResponse.ok) {
-              const adoptionPets = await forAdoptionResponse.json();
-              setPets(adoptionPets);
-            }
+          const adoptionResponse = await fetch(
+            `${API_URL}/recommendations?user_id=${myUserId}&mode=adoption`
+          );
+          
+          if (adoptionResponse.ok) {
+            const adoptionPets = await adoptionResponse.json();
+            setPets(adoptionPets);
+          } else {
+            console.error("Erro do servidor:", await adoptionResponse.text());
           }
         }
       } catch (error) {
@@ -120,50 +115,9 @@ export default function FeedSwipe() {
     return age === 1 ? "1 ano" : `${age} anos`;
   };
 
-  // --- 2. CARREGAR MAIS PETS QUANDO PRÓXIMO DO FINAL (TUTOR ONLY) ---
-  useEffect(() => {
-    // Carregar mais pets quando está perto do final (2 cards antes do fim)
-    // MAS APENAS em modo TUTOR (pets para adoção têm paginação)
-    if (activeProfile?.type === 'tutor' && currentIndex >= pets.length - 2 && pets.length > 0 && !isLoading) {
-      loadMorePets();
-    }
-  }, [currentIndex, pets.length]);
-
-  const loadMorePets = async () => {
-    try {
-      const userStr = await AsyncStorage.getItem('user');
-      const currentUser = userStr ? JSON.parse(userStr) : {};
-      const myUserId = currentUser.user_id || currentUser.id;
-
-      const isForAdoption = activeProfile?.type === 'tutor' ? 'true' : 'false';
-
-      console.log(`📥 Carregando mais pets... (skip=${skip})`);
-
-      const response = await fetch(
-        `${API_URL}/pets/feed?excludeUserId=${myUserId}&forAdoption=${isForAdoption}&userId=${myUserId}&skip=${skip}`
-      );
-
-      if (response.ok) {
-        const morePets = await response.json();
-        // Concatenar os novos pets à lista existente e EVITAR DUPLICATAS
-        if (morePets.length > 0) {
-          setPets((prevPets) => {
-            // Filtrar pets que não estão já na lista
-            const existingIds = new Set(prevPets.map(p => p.pet_id));
-            const newPetsFiltered = morePets.filter(p => !existingIds.has(p.pet_id));
-            
-            console.log(`✅ Adicionados ${newPetsFiltered.length} novos pets (${morePets.length - newPetsFiltered.length} duplicatas removidas)`);
-            return [...prevPets, ...newPetsFiltered];
-          });
-          
-          // Incrementar o skip para o próximo fetch
-          setSkip((prevSkip) => prevSkip + 10);
-        }
-      }
-    } catch (error) {
-      console.error('Erro ao carregar mais pets:', error);
-    }
-  };
+  // --- 2. NOTA: Paginação removida ---
+  // O endpoint de recomendações retorna todos os pets ordenados por relevância,
+  // sem necessidade de paginação incremental.
 
   // --- MOTOR DE SWIPE ---
   const panResponder = useRef(
