@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const messageController = require("../controllers/message.controller");
 
+router.post("/direct", messageController.getOrCreateDirectConversation);
 router.get("/:matchId", messageController.getMessages);
 router.post("/", messageController.createMessage);
 router.post("/:matchId/read", messageController.markAsRead);

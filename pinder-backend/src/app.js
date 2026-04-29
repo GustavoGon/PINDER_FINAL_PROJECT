@@ -49,6 +49,7 @@ const io = new Server(server, {
 });
 
 app.set("io", io);
+setupChatSockets(io);
 
 async function testConnection() {
   try {
@@ -64,12 +65,8 @@ testConnection();
 // --- Exportação ---
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}🌐`);
-});
-
-server.listen(PORT, () => {
-  console.log(`Websockets Server running on port ${PORT}`);
 });
 
 module.exports = app;

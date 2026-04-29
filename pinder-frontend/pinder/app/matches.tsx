@@ -87,6 +87,7 @@ export default function Matches() {
       params: {
         matchId: match.match_id,
         userId,
+        senderUserId: userId,
         petName: otherPet?.name || 'Chat',
         petPhoto: otherPet?.main_photo || '',
       },

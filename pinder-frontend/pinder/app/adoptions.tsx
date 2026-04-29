@@ -105,11 +105,16 @@ export default function Adoptions() {
   const handleSendMessage = async () => {
     setShowActionModal(false);
     if (selectedPet?.pet.owner.user_id) {
+      const userStr = await AsyncStorage.getItem('user');
+      const currentUser = userStr ? JSON.parse(userStr) : {};
+      const currentUserId = currentUser.user_id || currentUser.id;
+
       // Navegar para o chat com o dono do pet
       router.push({
         pathname: '/chatDetail',
         params: { 
           userId: selectedPet.pet.owner.user_id,
+          senderUserId: currentUserId || '',
           userName: selectedPet.pet.owner.username,
           petId: selectedPet.pet.pet_id,
           petName: selectedPet.pet.name,

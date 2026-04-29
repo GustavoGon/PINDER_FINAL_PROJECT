@@ -1,5 +1,65 @@
 const prisma = require("../prisma");
 
+// POST /messages/direct - Criar ou reutilizar uma conversa direta entre dois pets
+exports.getOrCreateDirectConversation = async (req, res) => {
+  try {
+    const { sender_pet_id, target_pet_id } = req.body;
+
+    if (!target_pet_id) {
+      return res.status(400).json({ error: "target_pet_id é obrigatório" });
+    }
+
+    const conversationPetId = sender_pet_id || target_pet_id;
+
+    const existingMatch = await prisma.match.findFirst({
+      where: {
+        OR: [
+          { pet_1_id: conversationPetId, pet_2_id: target_pet_id },
+          { pet_1_id: target_pet_id, pet_2_id: conversationPetId },
+        ],
+      },
+      include: {
+        pet1: { include: { owner: true } },
+        pet2: { include: { owner: true } },
+      },
+    });
+
+    if (existingMatch) {
+      if (!existingMatch.is_adoption) {
+        const updatedMatch = await prisma.match.update({
+          where: { match_id: existingMatch.match_id },
+          data: { is_adoption: true },
+          include: {
+            pet1: { include: { owner: true } },
+            pet2: { include: { owner: true } },
+          },
+        });
+
+        return res.json(updatedMatch);
+      }
+
+      return res.json(existingMatch);
+    }
+
+    const match = await prisma.match.create({
+      data: {
+        pet_1_id: conversationPetId,
+        pet_2_id: target_pet_id,
+        is_adoption: true,
+      },
+      include: {
+        pet1: { include: { owner: true } },
+        pet2: { include: { owner: true } },
+      },
+    });
+
+    return res.status(201).json(match);
+  } catch (error) {
+    console.error("Erro ao criar conversa direta:", error);
+    res.status(500).json({ error: "Erro ao criar conversa direta" });
+  }
+};
+
 // GET messages for a match
 exports.getMessages = async (req, res) => {
   const { matchId } = req.params;
@@ -23,6 +83,11 @@ exports.createMessage = async (req, res) => {
       content,
     },
   });
+
+  const io = req.app.get("io");
+  if (io) {
+    io.to(`match_${match_id}`).emit("receive_message", message);
+  }
 
   res.status(201).json(message);
 };

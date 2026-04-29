@@ -84,8 +84,9 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
   // 🚫 Filter
   function filterCandidates(pets, requireLocation = true) {
     return pets.filter((pet) => {
-      // skip same owner (only normal mode)
+      // skip same owner (normal mode and adoption mode)
       if (mode === "normal" && pet.user_id === userPet.user_id) return false;
+      if (mode === "adoption" && pet.user_id === user_id) return false;
 
       if (requireLocation) {
         if (hasGPS) {

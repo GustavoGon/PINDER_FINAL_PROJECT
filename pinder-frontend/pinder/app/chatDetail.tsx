@@ -9,44 +9,107 @@ import {
   TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import socket from '../src/services/socket';
 
 export default function ChatDetail() {
   const router = useRouter();
-  const { matchId, userId, petName, petPhoto } = useLocalSearchParams();
+  const { matchId, userId, petName, petPhoto, petId, senderPetId, senderUserId } = useLocalSearchParams();
 
   const matchIdStr = String(matchId || '');
-  const userIdStr = String(userId || '');
+  const routeUserIdStr = String(userId || '');
   const petNameStr = String(petName || 'Chat');
   const petPhotoStr = String(petPhoto || 'https://placehold.co/120x120/eeeeee/999999?text=Sem+Foto');
+  const petIdStr = String(petId || '');
+  const senderPetIdStr = String(senderPetId || '');
+  const senderUserIdStr = String(senderUserId || '');
 
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
+  const [resolvedMatchId, setResolvedMatchId] = useState(matchIdStr);
+  const [currentUserId, setCurrentUserId] = useState('');
+  const [isPreparingChat, setIsPreparingChat] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
 
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
 
   useEffect(() => {
-    if (!matchIdStr) {
-      return;
-    }
+    const prepareChat = async () => {
+      try {
+        setIsPreparingChat(true);
+        setStatusMessage('');
 
-    fetch(`${API_URL}/messages/${matchIdStr}`)
-      .then((res) => res.json())
-      .then((data) => setMessages(data))
-      .catch((err) => console.log(err));
+        const userStr = await AsyncStorage.getItem('user');
+        const currentUser = userStr ? JSON.parse(userStr) : {};
+        const realUserId = senderUserIdStr || currentUser.user_id || currentUser.id;
+        setCurrentUserId(realUserId);
 
-    fetch(`${API_URL}/messages/${matchIdStr}/read`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: userIdStr }),
-    }).catch((err) => console.log(err));
-  }, [matchIdStr]);
+        let finalMatchId = matchIdStr;
+        let finalSenderPetId = senderPetIdStr;
+
+        if (!finalSenderPetId && realUserId) {
+          const userPetsResponse = await fetch(`${API_URL}/pets/user/${realUserId}`);
+          if (userPetsResponse.ok) {
+            const userPets = await userPetsResponse.json();
+            finalSenderPetId = userPets?.find((pet: any) => pet.forAdoption)?.pet_id || userPets?.[0]?.pet_id || '';
+          }
+        }
+
+        if (!finalMatchId && petIdStr) {
+          const directMatchResponse = await fetch(`${API_URL}/messages/direct`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sender_pet_id: finalSenderPetId || undefined,
+              target_pet_id: petIdStr,
+            }),
+          });
+
+          if (directMatchResponse.ok) {
+            const directMatch = await directMatchResponse.json();
+            finalMatchId = directMatch.match_id;
+          }
+        }
+
+        if (!finalMatchId) {
+          if (!realUserId) {
+            setStatusMessage('Sessão inválida. Volta a iniciar sessão.');
+          } else {
+            setStatusMessage('Não foi possível preparar a conversa.');
+          }
+          return;
+        }
+
+        setResolvedMatchId(finalMatchId);
+
+        const messagesResponse = await fetch(`${API_URL}/messages/${finalMatchId}`);
+        if (messagesResponse.ok) {
+          const data = await messagesResponse.json();
+          setMessages(data);
+        }
+
+        await fetch(`${API_URL}/messages/${finalMatchId}/read`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: realUserId }),
+        });
+      } catch (err) {
+        console.log(err);
+      } finally {
+        setIsPreparingChat(false);
+      }
+    };
+
+    prepareChat();
+  }, [matchIdStr, petIdStr, routeUserIdStr]);
 
   useEffect(() => {
-    if (!matchIdStr) {
+    if (!resolvedMatchId) {
       return;
     }
 
@@ -54,33 +117,62 @@ export default function ChatDetail() {
       socket.connect();
     }
 
-    socket.emit('join_chat', { matchId: matchIdStr });
+    socket.emit('join_chat', { matchId: resolvedMatchId });
 
     const handleMessage = (msg: any) => {
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) =>
+        prev.some((existing) => existing.message_id === msg.message_id)
+          ? prev
+          : [...prev, msg]
+      );
     };
 
     socket.on('receive_message', handleMessage);
 
     return () => {
-      socket.emit('leave_chat', { matchId: matchIdStr });
+      socket.emit('leave_chat', { matchId: resolvedMatchId });
       socket.off('receive_message', handleMessage);
       socket.disconnect();
     };
-  }, [matchIdStr]);
+  }, [resolvedMatchId]);
 
   const sendMessage = () => {
-    if (!input.trim() || !matchIdStr) {
+    if (!input.trim() || !resolvedMatchId || !currentUserId) {
+      Alert.alert(
+        'Conversa indisponível',
+        'A conversa ainda não está pronta ou não foi possível identificar a sessão do utilizador.'
+      );
       return;
     }
 
-    socket.emit('send_message', {
-      matchId: matchIdStr,
-      senderId: userIdStr,
-      content: input.trim(),
-    });
-
+    const messageText = input.trim();
     setInput('');
+
+    fetch(`${API_URL}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        match_id: resolvedMatchId,
+        sender_id: currentUserId,
+        content: messageText,
+      }),
+    })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error('Falha ao enviar mensagem');
+        }
+        return res.json();
+      })
+      .then((message) => {
+        setMessages((prev) =>
+          prev.some((existing) => existing.message_id === message.message_id)
+            ? prev
+            : [...prev, message]
+        );
+      })
+      .catch((err) => {
+        console.log(err);
+      });
   };
 
   return (
@@ -111,13 +203,26 @@ export default function ChatDetail() {
           <View
             style={[
               styles.messageBubble,
-              item.sender_id === userIdStr ? styles.myMessage : styles.otherMessage,
+              item.sender_id === currentUserId ? styles.myMessage : styles.otherMessage,
             ]}
           >
             <Text style={styles.messageText}>{item.content}</Text>
           </View>
         )}
       />
+
+      {isPreparingChat && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="small" color="#5C4A3D" />
+          <Text style={styles.loadingText}>A preparar conversa...</Text>
+        </View>
+      )}
+
+      {!!statusMessage && (
+        <View style={styles.statusBar}>
+          <Text style={styles.statusText}>{statusMessage}</Text>
+        </View>
+      )}
 
       <View style={styles.inputContainer}>
         <TextInput
@@ -193,6 +298,33 @@ const styles = StyleSheet.create({
   },
   messageText: {
     color: '#000',
+  },
+  loadingOverlay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#FFF7E9',
+    borderTopWidth: 1,
+    borderTopColor: '#E8D7B8',
+  },
+  loadingText: {
+    color: '#5C4A3D',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  statusBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#FFF3E0',
+    borderTopWidth: 1,
+    borderTopColor: '#E8D7B8',
+  },
+  statusText: {
+    color: '#8A5A2B',
+    fontSize: 13,
+    lineHeight: 18,
   },
   inputContainer: {
     flexDirection: 'row',

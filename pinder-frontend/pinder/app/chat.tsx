@@ -111,12 +111,17 @@ export default function Chat() {
     return date.toLocaleDateString('pt-PT', { month: 'short', day: 'numeric' });
   };
 
-  const openConversation = (chat: any) => {
+  const openConversation = async (chat: any) => {
+    const userStr = await AsyncStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : {};
+    const currentUserId = user.user_id || user.id || '';
+
     router.push({
       pathname: '/chatDetail',
       params: {
         matchId: chat.matchId,
         userId: chat.otherUserId || '',
+        senderUserId: currentUserId,
         petName: chat.name,
         petPhoto: chat.img,
       },
