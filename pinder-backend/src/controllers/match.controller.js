@@ -1,4 +1,5 @@
 const prisma = require("../prisma");
+const { finalizeAdoption } = require("../services/adoption.service");
 
 // GET /matches
 exports.getMatches = async (req, res) => {
@@ -6,15 +7,12 @@ exports.getMatches = async (req, res) => {
     const { petId } = req.query;
 
     let where = {};
-    
+
     // Se petId foi passado, filtrar matches por esse pet
     if (petId) {
       where = {
-        OR: [
-          { pet_1_id: petId },
-          { pet_2_id: petId }
-        ],
-        unmatched: false // Apenas matches ativos
+        OR: [{ pet_1_id: petId }, { pet_2_id: petId }],
+        unmatched: false, // Apenas matches ativos
       };
     }
 
@@ -44,20 +42,58 @@ exports.unmatchPets = async (req, res) => {
       data: {
         unmatched: true,
         unmatched_by: unmatched_by || null,
-        unmatch_timestamp: new Date()
+        unmatch_timestamp: new Date(),
       },
       include: {
         pet1: true,
-        pet2: true
-      }
+        pet2: true,
+      },
     });
 
     return res.json({
       message: "Match desligado com sucesso",
-      match: updatedMatch
+      match: updatedMatch,
     });
   } catch (error) {
     console.error("Erro ao desligar match:", error);
     res.status(500).json({ error: "Erro ao desligar match" });
+  }
+};
+
+exports.confirmAdoption = async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const { userId } = req.body;
+
+    const match = await prisma.match.findUnique({
+      where: { match_id: matchId },
+      include: { pet1: true, pet2: true },
+    });
+
+    if (!match || match.unmatched) {
+      return res.status(400).json({ error: "Invalid match" });
+    }
+
+    const isOwner = match.pet1.user_id === userId;
+
+    const updatedMatch = await prisma.match.update({
+      where: { match_id: matchId },
+      data: isOwner
+        ? { adoption_confirmed_by_owner: true }
+        : { adoption_confirmed_by_adopter: true },
+    });
+
+    // 🔥 call service
+    if (
+      updatedMatch.adoption_confirmed_by_owner &&
+      updatedMatch.adoption_confirmed_by_adopter
+    ) {
+      await finalizeAdoption(match);
+    }
+
+    res.json(updatedMatch);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
   }
 };
