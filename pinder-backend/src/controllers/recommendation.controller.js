@@ -2,13 +2,17 @@ const { getRecommendations } = require("../services/recommendation.service");
 
 exports.getRecommendations = async (req, res) => {
   try {
-    const { pet_id } = req.params;
+    const { pet_id, user_id, mode } = req.query;
 
-    const recommendations = await getRecommendations(pet_id);
+    const data = await getRecommendations({
+      pet_id,
+      user_id,
+      mode: mode || "normal",
+    });
 
-    res.status(200).json(recommendations);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error fetching recommendations" });
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 };

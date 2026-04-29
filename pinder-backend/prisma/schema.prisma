@@ -29,6 +29,7 @@ enum CharacteristicType {
 model Admin {
   admin_id String @id @default(uuid())
   email    String @unique
+  password String
 
   created_at DateTime @default(now())
 
@@ -237,6 +238,7 @@ model Preference {
 model UserPreference {
   user_id       String
   preference_id String
+  weight        Float @default(1.0)
 
   user       User       @relation(fields: [user_id], references: [user_id])
   preference Preference @relation(fields: [preference_id], references: [preference_id])
@@ -248,6 +250,7 @@ model UserPreference {
 model PetPreference {
   pet_id        String
   preference_id String
+  weight        Float @default(1.0)
 
   pet        Pet        @relation(fields: [pet_id], references: [pet_id])
   preference Preference @relation(fields: [preference_id], references: [preference_id])
