@@ -8,12 +8,15 @@ const interactionRoutes = require("./routes/interaction.routes");
 const matchRoutes = require("./routes/match.routes");
 const messageRoutes = require("./routes/message.routes");
 const recommendationRoutes = require("./routes/recommendation.routes");
-const speciesRoutes = require('./routes/species.routes');
-const breedRoutes = require('./routes/breed.routes');
-const groupRoutes = require('./routes/group.routes');
-const districtRoutes = require('./routes/district.routes');
-
+const speciesRoutes = require("./routes/species.routes");
+const breedRoutes = require("./routes/breed.routes");
+const groupRoutes = require("./routes/group.routes");
+const districtRoutes = require("./routes/district.routes");
+const uploadRoutes = require("./routes/upload.routes");
+const setupChatSockets = require("./sockets/chat.socket");
+const eventRoutes = require("./routes/event.routes");
 const app = express();
+const uploadRoutes = require("./routes/upload.routes");
 
 // --- Middlewares ---
 app.use(cors()); // Permite que o seu front-end acesse a API
@@ -30,8 +33,9 @@ app.use("/matches", matchRoutes);
 app.use("/messages", messageRoutes);
 app.use("/groups", groupRoutes);
 app.use("/districts", districtRoutes);
-app.use("/uploads", express.static("uploads"));
 app.use("/recommendations", recommendationRoutes);
+app.use("/events", eventRoutes);
+app.use("/upload", uploadRoutes);
 
 // Rota de teste inicial
 app.get("/", (req, res) => {

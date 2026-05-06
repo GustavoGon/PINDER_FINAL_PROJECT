@@ -44,6 +44,12 @@ model User {
   preferences               UserPreference[]
   tutorAdoptionInteractions TutorAdoptionInteraction[]
 
+  currentAdoptions Adoption[] @relation("currentOwner")
+  previousAdoptions Adoption[] @relation("previousOwner")
+
+  eventAttendances EventAttendee[]
+  createdEvents Event[]
+
   @@map("users")
 }
 
@@ -76,6 +82,8 @@ model Pet {
 
   preferences PetPreference[]
   tutorAdoptionInteractions TutorAdoptionInteraction[]
+
+  eventAttendances EventAttendee[]
 
   @@map("pets")
 }
@@ -237,35 +245,52 @@ model Characteristic {
   @@map("characteristics")
 }
 
-model Group {
-  group_id      String   @id @default(uuid())
-  title         String
-  description   String?
-  date          DateTime
-  time          String?
-  location      String
-  latitude      Float
-  longitude     Float
+model Event {
+  event_id String @id @default(uuid())
+
+  title       String
+  description String?
+
+  starts_at DateTime
+  ends_at   DateTime?
+
+  location  String
+  latitude  Float
+  longitude Float
+
+  image String?
+
   max_attendees Int?
-  image         String?
-  created_by    String
-  created_at    DateTime @default(now())
+  attendee_count Int @default(0)
 
-  attendees GroupEventAttendee[]
+  cancelled Boolean @default(false)
 
-  @@map("groups")
+  created_by String
+  creator User @relation(fields: [created_by], references: [user_id])
+
+  created_at DateTime @default(now())
+
+  attendees EventAttendee[]
+
+  @@map("events")
 }
 
-model GroupEventAttendee {
-  group_id  String
-  user_id   String
-  pet_id    String?
+model EventAttendee {
+  event_id String
+  user_id  String
+  pet_id   String?
+
   joined_at DateTime @default(now())
 
-  group Group @relation(fields: [group_id], references: [group_id], onDelete: Cascade)
+  event Event @relation(fields: [event_id], references: [event_id], onDelete: Cascade)
 
-  @@id([group_id, user_id])
-  @@map("group_attendees")
+  user User @relation(fields: [user_id], references: [user_id])
+
+  pet Pet? @relation(fields: [pet_id], references: [pet_id])
+
+  @@id([event_id, user_id])
+
+  @@map("event_attendees")
 }
 
 model TutorAdoptionInteraction {
