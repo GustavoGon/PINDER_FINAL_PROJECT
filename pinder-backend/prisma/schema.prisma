@@ -26,6 +26,16 @@ enum CharacteristicType {
   GENDER
 }
 
+model Admin {
+  admin_id String @id @default(uuid())
+  email    String @unique
+  password String
+
+  created_at DateTime @default(now())
+
+  @@map("admins")
+}
+
 model User {
   user_id     String   @id @default(uuid())
   username    String   @unique
@@ -148,12 +158,37 @@ model Match {
   unmatched_by String?
   unmatch_timestamp DateTime?
 
+  is_adoption Boolean @default(false)
+
+  adoption_confirmed_by_owner Boolean @default(false)
+  adoption_confirmed_by_adopter Boolean @default(false)
+
   pet1 Pet @relation("pet1", fields: [pet_1_id], references: [pet_id])
   pet2 Pet @relation("pet2", fields: [pet_2_id], references: [pet_id])
 
   messages Message[]
 
+    // 🆕 relation
+  adoption Adoption?
+
   @@map("matches")
+}
+
+model Adoption {
+  adoption_id    String   @id @default(uuid())
+
+  match_id       String   @unique
+  current_owner  String
+  previous_owner String
+
+  timestamp      DateTime @default(now())
+
+  // relations
+  match          Match @relation(fields: [match_id], references: [match_id])
+  currentUser    User  @relation("currentOwner", fields: [current_owner], references: [user_id])
+  previousUser   User  @relation("previousOwner", fields: [previous_owner], references: [user_id])
+
+  @@map("adoptions")
 }
 
 model Message {
@@ -162,6 +197,9 @@ model Message {
   sender_id  String
   timestamp  DateTime @default(now())
   content    String
+
+  // 🆕 NEW
+  read       Boolean  @default(false)
 
   match  Match @relation(fields: [match_id], references: [match_id])
   sender User  @relation(fields: [sender_id], references: [user_id])
@@ -205,6 +243,7 @@ model Preference {
 model UserPreference {
   user_id       String
   preference_id String
+  weight        Float @default(1.0)
 
   user       User       @relation(fields: [user_id], references: [user_id])
   preference Preference @relation(fields: [preference_id], references: [preference_id])
@@ -216,6 +255,7 @@ model UserPreference {
 model PetPreference {
   pet_id        String
   preference_id String
+  weight        Float @default(1.0)
 
   pet        Pet        @relation(fields: [pet_id], references: [pet_id])
   preference Preference @relation(fields: [preference_id], references: [preference_id])

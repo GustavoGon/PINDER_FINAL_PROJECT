@@ -1,8 +1,9 @@
 const express = require("express");
 const router = express.Router();
-const controller = require("../controllers/match.controller");
+const matchController = require("../controllers/match.controller");
 
-router.get("/", controller.getMatches);
-router.put("/:match_id", controller.unmatchPets);
+router.get("/", matchController.getMatches);
+router.put("/:match_id", matchController.unmatchPets);
+router.post("/:matchId/confirm-adoption", matchController.confirmAdoption);
 
 module.exports = router;

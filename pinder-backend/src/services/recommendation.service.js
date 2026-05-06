@@ -1,79 +1,89 @@
 const prisma = require("../prisma");
 
-async function getRecommendations(pet_id) {
-  // 🧱 1. Get current pet
-  const userPet = await prisma.pet.findUnique({
-    where: { pet_id },
-    include: {
-      owner: true,
-      preferences: true,
-    },
-  });
+async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
+  let userPet = null;
+  let userPrefs = [];
+  let baseLocation = null;
 
-  if (!userPet) {
-    throw new Error("Pet not found");
+  // 🐾 NORMAL MODE → use pet
+  if (mode === "normal") {
+    if (!pet_id) throw new Error("pet_id is required");
+
+    userPet = await prisma.pet.findUnique({
+      where: { pet_id },
+      include: {
+        owner: true,
+        preferences: true,
+      },
+    });
+
+    if (!userPet) throw new Error("Pet not found");
+
+    baseLocation = userPet.owner;
   }
 
-  // 🚫 Validar localização OU distrito
-  const hasGPS = userPet.owner?.latitude && userPet.owner?.longitude;
-  const hasLocation = userPet.owner?.location;
+  // 🏠 ADOPTION MODE → use user
+  if (mode === "adoption") {
+    if (!user_id) throw new Error("user_id is required");
+
+    const user = await prisma.user.findUnique({
+      where: { user_id },
+    });
+
+    if (!user) throw new Error("User not found");
+
+    baseLocation = user;
+
+    userPrefs = await prisma.userPreference.findMany({
+      where: { user_id },
+    });
+  }
+
+  // 📍 Location validation
+  const hasGPS = baseLocation?.latitude && baseLocation?.longitude;
+  const hasLocation = baseLocation?.location;
 
   if (!hasGPS && !hasLocation) {
-    console.warn(`⚠️ User pet ${pet_id} owner sem localização ou distrito!`);
-    throw new Error("Por favor adiciona localização ou distrito no perfil!");
+    throw new Error("Add location or district to profile");
   }
 
-  console.log(`📍 Modo: ${hasGPS ? "GPS" : "DISTRITO"} (${hasGPS ? `${userPet.owner.latitude}, ${userPet.owner.longitude}` : userPet.owner.location})`);
+  // 👀 Seen pets (only for normal mode)
+  let seenIds = [];
+  if (mode === "normal") {
+    const seen = await prisma.interaction.findMany({
+      where: { pet_id },
+      select: { target_pet_id: true },
+    });
 
-  // 👀 2. Get seen pets
-  const seen = await prisma.interaction.findMany({
-    where: { pet_id },
-    select: { target_pet_id: true },
-  });
+    seenIds = seen.map((s) => s.target_pet_id);
+  }
 
-  const seenIds = seen.map((s) => s.target_pet_id);
-  console.log(`📊 Pet ${pet_id} já viu ${seenIds.length} pets`);
-
-  // 🐾 3. Get candidates (TODOS os pets, independente do tipo)
+  // 🐾 Candidates
   const candidates = await prisma.pet.findMany({
     where: {
-      pet_id: { not: pet_id },
-      // 🔑 Sem filtro de forAdoption: pets veem TODOS os outros pets
-      NOT: { pet_id: { in: seenIds } },
+      ...(mode === "normal" && { pet_id: { not: pet_id } }),
+      ...(mode === "normal" && { NOT: { pet_id: { in: seenIds } } }),
+      forAdoption: mode === "adoption",
     },
     include: {
       breed: true,
       owner: true,
       species: true,
+      preferences: true,
     },
   });
 
-  console.log(`🐾 Encontrados ${candidates.length} candidatos (todos os tipos)`);
-
-  // 🚫 4. Filter com estratégia de fallback (3 níveis)
-  
-  // Função auxiliar para filtrar
-  function filterCandidates(pets, requireLocation = true, requirePreference = true) {
+  // 🚫 Filter
+  function filterCandidates(pets, requireLocation = true) {
     return pets.filter((pet) => {
-      // Skip same owner - SEMPRE
-      if (pet.user_id === userPet.user_id) return false;
+      // skip same owner (only normal mode)
+      if (mode === "normal" && pet.user_id === userPet.user_id) return false;
 
-      // Nível 1: Exigir localização se ativado
       if (requireLocation) {
         if (hasGPS) {
-          // Modo GPS: exigir coordenadas
           if (!pet.owner?.latitude || !pet.owner?.longitude) return false;
         } else if (hasLocation) {
-          // Modo DISTRITO: exigir mesmo distrito
-          if (pet.owner?.location !== userPet.owner.location) return false;
-        }
-      }
-
-      // Nível 2: Exigir preferência se ativado
-      if (requirePreference) {
-        const pref = userPet.preferences?.[0];
-        if (pref?.preferred_gender && pet.gender !== pref.preferred_gender) {
-          return false;
+          if (pet.owner?.location !== baseLocation.location) return false;
         }
       }
 
@@ -81,23 +91,13 @@ async function getRecommendations(pet_id) {
     });
   }
 
-  // Tentar progressivamente com fallback
-  let filtered = filterCandidates(candidates, true, true); // Localização + Preferências
-  console.log(`✅ Nível 1 (localização + preferências): ${filtered.length} pets`);
+  let filtered = filterCandidates(candidates, true);
 
   if (filtered.length === 0) {
-    filtered = filterCandidates(candidates, true, false); // Localização apenas
-    console.log(`📍 Nível 2 (localização apenas): ${filtered.length} pets`);
+    filtered = filterCandidates(candidates, false);
   }
 
-  if (filtered.length === 0) {
-    filtered = filterCandidates(candidates, false, false); // Sem filtros
-    console.log(`🌍 Nível 3 (sem localização): ${filtered.length} pets`);
-  }
-
-  console.log(`✅ Após filtros: ${filtered.length} pets válidos`);
-
-  // 📍 5. Distance function
+  // 📍 Distance
   function getDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -112,24 +112,55 @@ async function getRecommendations(pet_id) {
     return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
   }
 
-  // 🧠 6. Scoring
-  function scorePet(userPet, candidate) {
+  // 🧠 Preference scoring
+  function scorePreferences(sourcePrefs, targetPrefs) {
     let score = 0;
 
-    // Breed
-    if (userPet.breed_id && userPet.breed_id === candidate.breed_id) {
-      score += 20;
+    for (const sPref of sourcePrefs) {
+      const match = targetPrefs.find(
+        (p) => p.preference_id === sPref.preference_id,
+      );
+
+      if (match) {
+        const sWeight = sPref.weight || 1;
+        const tWeight = match.weight || 1;
+        score += sWeight * tWeight;
+      }
     }
 
-    // Size
-    if (userPet.size && candidate.size && userPet.size === candidate.size) {
-      score += 5;
+    return score;
+  }
+
+  function normalizePreferenceScore(score) {
+    return Math.min(score, 5) * 10;
+  }
+
+  // 🧠 Main scoring
+  function scorePet(candidate) {
+    let score = 0;
+
+    let prefRaw = 0;
+
+    if (mode === "adoption") {
+      prefRaw = scorePreferences(userPrefs, candidate.preferences);
+    } else {
+      prefRaw = scorePreferences(userPet.preferences, candidate.preferences);
     }
 
-    // Energy
-    if (userPet.energy && candidate.energy) {
-      const diff = Math.abs(userPet.energy - candidate.energy);
-      score += Math.max(0, 10 - diff);
+    const prefScore = normalizePreferenceScore(prefRaw);
+
+    score += mode === "adoption" ? prefScore * 1.2 : prefScore * 1.5;
+
+    // Extra signals only for normal
+    if (mode === "normal") {
+      if (userPet.breed_id === candidate.breed_id) score += 20;
+
+      if (userPet.size && candidate.size === userPet.size) score += 5;
+
+      if (userPet.energy && candidate.energy) {
+        const diff = Math.abs(userPet.energy - candidate.energy);
+        score += Math.max(0, 10 - diff);
+      }
     }
 
     score += Math.random() * 2;
@@ -137,54 +168,43 @@ async function getRecommendations(pet_id) {
     return score;
   }
 
-  // 🧮 7. Score + distance (sem filtrar distância ainda)
+  // 🧮 Final scoring
   const scored = filtered.map((pet) => {
     let distance = 0;
     let distanceScore = 0;
 
-    // Se temos GPS: calcular distância real
     if (hasGPS) {
       distance = getDistance(
-        userPet.owner.latitude,
-        userPet.owner.longitude,
+        baseLocation.latitude,
+        baseLocation.longitude,
         pet.owner.latitude,
         pet.owner.longitude,
       );
 
-      // Calcular score baseado na distância (sem filtrar 100km agora)
       distanceScore = Math.max(0, 50 - distance);
     } else {
-      // Se estamos em modo DISTRITO: todos já estão no mesmo distrito
-      distanceScore = 20; // Bonus por estar no mesmo distrito
-      distance = 0; // Mostrar como 0 no frontend
+      distanceScore = 20;
     }
 
     return {
       ...pet,
       distance,
-      score: scorePet(userPet, pet) + distanceScore,
+      score: scorePet(pet) + distanceScore,
     };
   });
 
-  console.log(`🎯 Após scoring e distância: ${scored.length} pets`);
+  // 📊 Sort
+  const nearby = scored
+    .filter((p) => p.distance <= 100 || !hasGPS)
+    .sort((a, b) => b.score - a.score);
 
-  // 📊 8. Separar: Próximos (<=100km) e Distantes (>100km)
-  const nearby = scored.filter(p => p.distance <= 100 || !hasGPS).sort((a, b) => b.score - a.score);
-  const distant = scored.filter(p => p.distance > 100).sort((a, b) => b.score - a.score);
+  const distant = scored
+    .filter((p) => p.distance > 100)
+    .sort((a, b) => b.score - a.score);
 
-  console.log(`📍 Próximos (<=100km): ${nearby.length}, Distantes (>100km): ${distant.length}`);
-
-  // 🎯 9. Retornar: Próximos primeiro, depois distantes (sem limite rígido)
-  const recommendations = [
-    ...nearby,
-    ...distant
-  ];
-
-  console.log(`✅ Retornando ${recommendations.length} recomendações (${nearby.length} próximos + ${distant.length} distantes)`);
-  
-  return recommendations;
+  return [...nearby, ...distant];
 }
 
 module.exports = {
-  getRecommendations
+  getRecommendations,
 };

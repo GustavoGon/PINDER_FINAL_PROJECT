@@ -10,7 +10,23 @@ const {
   generatePhoto,
   normalizeHeaders,
   parseRange,
+  getRandomPreferences,
 } = require("./seed.utils");
+
+const PREFERENCES = [
+  { id: "pref_playful", label: "Playful" },
+  { id: "pref_calm", label: "Calm" },
+  { id: "pref_affectionate", label: "Affectionate" },
+  { id: "pref_independent", label: "Independent" },
+  { id: "pref_high_energy", label: "High Energy" },
+  { id: "pref_low_energy", label: "Low Energy" },
+  { id: "pref_good_with_kids", label: "Good with Kids" },
+  { id: "pref_good_with_pets", label: "Good with Other Pets" },
+  { id: "pref_apartment", label: "Apartment Friendly" },
+  { id: "pref_needs_yard", label: "Needs Yard" },
+  { id: "pref_low_maintenance", label: "Low Maintenance" },
+  { id: "pref_high_grooming", label: "High Grooming Needs" },
+];
 
 const readline = require("readline");
 
@@ -34,6 +50,8 @@ async function main() {
   const shouldReset = process.env.RESET_DB === "true";
 
   // 🧹 Always clean dynamic data
+  await prisma.petPreference.deleteMany();
+  await prisma.userPreference.deleteMany();
   await prisma.petPhoto.deleteMany();
   await prisma.pet.deleteMany();
   await prisma.user.deleteMany();
@@ -44,6 +62,42 @@ async function main() {
     await prisma.species.deleteMany();
   }
   console.log("🌱 Deleted old data...");
+
+  console.log("🌱 Seeding texts + preferences...");
+
+  // Clean
+  await prisma.preference.deleteMany();
+  await prisma.text.deleteMany();
+
+  // 1. Create texts
+  const createdTexts = await Promise.all(
+    PREFERENCES.map((p) =>
+      prisma.text.create({
+        data: {
+          original_text: p.label,
+        },
+      }),
+    ),
+  );
+
+  // 2. Create preferences linked to texts
+  const createdPreferences = await Promise.all(
+    createdTexts.map((text) =>
+      prisma.preference.create({
+        data: {
+          text_id: text.text_id,
+        },
+      }),
+    ),
+  );
+
+  // 3. Build prefMap: "pref_playful" → DB id
+  const prefMap = {};
+  createdPreferences.forEach((pref, index) => {
+    prefMap[PREFERENCES[index].id] = pref.preference_id;
+  });
+
+  console.log("✅ Preferences ready");
 
   // 🐾 Species (only if empty or reset)
   let dogSpecies, catSpecies;
@@ -77,7 +131,107 @@ async function main() {
 
   // 👤 Users
   console.log("🌱 Seeding Users...");
-  const users = [];
+
+  const bcrypt = require("bcrypt");
+  const adminPassword = await bcrypt.hash("admin123", 10);
+
+  const adminsData = [
+    {
+      email: "admin@mail.com",
+      password: adminPassword,
+    },
+    {
+      email: "admin2@mail.com",
+      password: adminPassword,
+    },
+  ];
+
+  const fixedUsersData = [
+    {
+      username: "testuser1",
+      email: "test1@mail.com",
+      location: "Lisbon",
+      latitude: 38.7223,
+      longitude: -9.1393,
+    },
+    {
+      username: "testuser2",
+      email: "test2@mail.com",
+      location: "Porto",
+      latitude: 41.1579,
+      longitude: -8.6291,
+    },
+  ];
+
+  // Optional: avoid duplicates if not resetting DB
+  for (const admin of adminsData) {
+    await prisma.admin.upsert({
+      where: { email: admin.email },
+      update: {},
+      create: admin,
+    });
+  }
+
+  console.log("✅ Admins created");
+
+  // Insert all fixed users
+  const fixedUsers = [];
+
+  for (const userData of [...fixedUsersData]) {
+    const hashedPassword = await bcrypt.hash("123456", 10);
+    const user = await prisma.user.create({
+      data: {
+        ...userData,
+        password: hashedPassword,
+        isBanned: false,
+      },
+    });
+
+    fixedUsers.push(user);
+  }
+
+  console.log("🌱 Creating pets for fixed users...");
+
+  for (const user of fixedUsers) {
+    const species = speciesList[0]; // Dog (safe default)
+    const breed = breedsBySpecies[species.species_id][0];
+
+    const pet = await prisma.pet.create({
+      data: generatePet(user.user_id, species.species_id, breed.breed_id),
+    });
+
+    // Add preferences (reuse your logic)
+    const petPrefs = getRandomPreferences(3);
+
+    await prisma.petPreference.createMany({
+      data: petPrefs.map((prefKey) => ({
+        pet_id: pet.pet_id,
+        preference_id: prefMap[prefKey],
+        weight: faker.helpers.weightedArrayElement([
+          { weight: 1, value: 0.5 },
+          { weight: 2, value: 0.8 },
+          { weight: 3, value: 1.0 },
+        ]),
+      })),
+    });
+  }
+  console.log("🌱 Assigning preferences to fixed users...");
+
+  for (const user of fixedUsers) {
+    const userPrefs = getRandomPreferences(3);
+
+    await prisma.userPreference.createMany({
+      data: userPrefs.map((prefKey) => ({
+        user_id: user.user_id,
+        preference_id: prefMap[prefKey],
+        weight: Math.random() * 0.5 + 0.7,
+      })),
+      skipDuplicates: true, // 🔥 REQUIRED
+    });
+  }
+
+  console.log("✅ Fixed users created");
+  const users = [...fixedUsers];
 
   for (let i = 0; i < process.env.NUM_USERS; i++) {
     users.push(
@@ -108,6 +262,18 @@ async function main() {
         ),
       });
 
+      const petPrefs = getRandomPreferences(
+        faker.number.int({ min: 2, max: 4 }),
+      );
+
+      await prisma.petPreference.createMany({
+        data: petPrefs.map((prefKey) => ({
+          pet_id: pet.pet_id,
+          preference_id: prefMap[prefKey],
+          weight: Math.random() * 0.5 + 0.5,
+        })),
+      });
+
       const photos = Array.from({
         length: faker.number.int({ min: 1, max: 3 }),
       }).map((_, i) => ({
@@ -118,6 +284,17 @@ async function main() {
 
       await prisma.petPhoto.createMany({ data: photos });
     }
+
+    const userPrefs = getRandomPreferences(3);
+
+    await prisma.userPreference.createMany({
+      data: userPrefs.map((prefKey) => ({
+        user_id: user.user_id,
+        preference_id: prefMap[prefKey],
+        weight: Math.random() * 0.5 + 0.7,
+      })),
+      skipDuplicates: true, // 🔥 REQUIRED
+    });
   }
 
   console.log("✅ Advanced seed completed!");
