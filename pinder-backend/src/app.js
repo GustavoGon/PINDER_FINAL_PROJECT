@@ -17,7 +17,6 @@ const districtRoutes = require("./routes/district.routes");
 const uploadRoutes = require("./routes/upload.routes");
 const setupChatSockets = require("./sockets/chat.socket");
 const eventRoutes = require("./routes/event.routes");
-const uploadRoutes = require("./routes/upload.routes");
 const app = express();
 const server = http.createServer(app);
 
