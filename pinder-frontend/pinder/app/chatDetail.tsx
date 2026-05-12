@@ -212,9 +212,11 @@ export default function ChatDetail() {
       />
 
       {isPreparingChat && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="small" color="#5C4A3D" />
-          <Text style={styles.loadingText}>A preparar conversa...</Text>
+        <View style={styles.loadingOverlay} pointerEvents="auto">
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="small" color="#5C4A3D" />
+            <Text style={styles.loadingText}>A carregar mensagens...</Text>
+          </View>
         </View>
       )}
 
@@ -300,14 +302,27 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 242, 235, 0.9)',
+    paddingHorizontal: 24,
+  },
+  loadingCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 12,
     backgroundColor: '#FFF7E9',
-    borderTopWidth: 1,
-    borderTopColor: '#E8D7B8',
+    borderWidth: 1,
+    borderColor: '#E8D7B8',
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   loadingText: {
     color: '#5C4A3D',

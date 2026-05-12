@@ -9,8 +9,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   TextInput,
-  Modal,
-  Pressable,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -39,11 +37,10 @@ export default function Chat() {
   const { activeProfile } = useActiveProfile();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOpeningConversation, setIsOpeningConversation] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentUserId, setCurrentUserId] = useState('');
   const [selectedTab, setSelectedTab] = useState<'matches' | 'adoptions'>('matches');
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-  const [showActionModal, setShowActionModal] = useState(false);
 
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
 
@@ -118,6 +115,11 @@ export default function Chat() {
   };
 
   const openConversation = (chat: Conversation) => {
+    if (isOpeningConversation) {
+      return;
+    }
+
+    setIsOpeningConversation(true);
     router.push({
       pathname: '/chatDetail',
       params: {
@@ -131,14 +133,20 @@ export default function Chat() {
   };
 
   const openConversationOrAction = (chat: Conversation) => {
-    if (selectedTab === 'adoptions' && chat.isInterested && activeProfile?.type === 'tutor') {
-      setSelectedConversation(chat);
-      setShowActionModal(true);
+    openConversation(chat);
+  };
+
+  useEffect(() => {
+    if (!isOpeningConversation) {
       return;
     }
 
-    openConversation(chat);
-  };
+    const timer = setTimeout(() => {
+      setIsOpeningConversation(false);
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [isOpeningConversation]);
 
   const matchesCount = conversations.filter((chat) => chat.category === 'matches').length;
   const adoptionsCount = conversations.filter((chat) => chat.category === 'adoptions').length;
@@ -156,28 +164,6 @@ export default function Chat() {
     }
 
     return String(chat.lastMessageSenderId) === String(currentUserId);
-  };
-
-  const closeActionModal = () => {
-    setShowActionModal(false);
-    setSelectedConversation(null);
-  };
-
-  const goToPetProfile = () => {
-    if (!selectedConversation?.otherPetId) return;
-
-    setShowActionModal(false);
-    router.push({
-      pathname: '/petProfile',
-      params: { petId: selectedConversation.otherPetId },
-    });
-  };
-
-  const continueToChat = () => {
-    if (!selectedConversation) return;
-
-    setShowActionModal(false);
-    openConversation(selectedConversation);
   };
 
   return (
@@ -278,28 +264,6 @@ export default function Chat() {
         />
       )}
 
-      <Modal visible={showActionModal} transparent animationType="fade" onRequestClose={closeActionModal}>
-        <Pressable style={styles.modalOverlay} onPress={closeActionModal}>
-          <Pressable style={styles.modalCard} onPress={(event) => event.stopPropagation()}>
-            <Image
-              source={{ uri: selectedConversation?.img || 'https://placehold.co/160x160/eeeeee/999999?text=Sem+Foto' }}
-              style={styles.modalAvatar}
-            />
-            <Text style={styles.modalTitle}>{selectedConversation?.name || 'Adoção'}</Text>
-            <Text style={styles.modalSubtitle}>O interesse foi registado. Podes abrir o perfil ou continuar para o chat.</Text>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={[styles.modalButton, styles.modalSecondaryButton]} onPress={goToPetProfile}>
-                <Text style={styles.modalSecondaryButtonText}>Ver Perfil</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalButton, styles.modalPrimaryButton]} onPress={continueToChat}>
-                <Text style={styles.modalPrimaryButtonText}>Mandar Mensagem</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
       <BottomNav activePage="chat" />
     </View>
   );
@@ -393,6 +357,32 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#5C4A3D',
+  },
+  openingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(245, 242, 235, 0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  openingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'white',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  openingText: {
+    color: '#5C4A3D',
+    fontSize: 14,
+    fontWeight: '600',
   },
   listContent: {
     paddingHorizontal: 16,
@@ -511,67 +501,6 @@ const styles = StyleSheet.create({
     height: 11,
     borderRadius: 999,
     backgroundColor: '#4CAF50',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: 'white',
-    borderRadius: 24,
-    padding: 22,
-    alignItems: 'center',
-  },
-  modalAvatar: {
-    width: 110,
-    height: 110,
-    borderRadius: 28,
-    marginBottom: 14,
-    backgroundColor: '#eee',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#2F2A24',
-    textAlign: 'center',
-  },
-  modalSubtitle: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#7D736A',
-    textAlign: 'center',
-  },
-  modalActions: {
-    width: '100%',
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 18,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  modalPrimaryButton: {
-    backgroundColor: '#FF6B9D',
-  },
-  modalSecondaryButton: {
-    backgroundColor: '#F1E8DC',
-  },
-  modalPrimaryButtonText: {
-    color: 'white',
-    fontWeight: '800',
-  },
-  modalSecondaryButtonText: {
-    color: '#5C4A3D',
-    fontWeight: '800',
   },
   emptyState: {
     flex: 1,
