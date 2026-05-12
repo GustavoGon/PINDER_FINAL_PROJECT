@@ -19,6 +19,7 @@ function buildConversationEntry(match, currentUserId) {
     breed: otherPet.breed?.name || "Raça não definida",
     msg: lastMessage?.content || "Sem mensagens ainda",
     time: lastMessage ? lastMessage.timestamp : match.timestamp,
+    lastMessageSenderId: lastMessage?.sender_id || null,
     unread: 0,
     img: otherPet.main_photo || "https://placehold.co/150x150/eeeeee/999999?text=Sem+Foto",
     matchId: match.match_id,
@@ -165,6 +166,20 @@ exports.getConversations = async (req, res) => {
 
     const petIds = userPets.map((pet) => pet.pet_id);
     const conversationMap = new Map();
+    const unreadCounts = await prisma.message.groupBy({
+      by: ["match_id"],
+      where: {
+        read: false,
+        sender_id: { not: userId },
+      },
+      _count: {
+        message_id: true,
+      },
+    });
+
+    const unreadByMatchId = new Map(
+      unreadCounts.map((entry) => [entry.match_id, entry._count.message_id])
+    );
 
     if (petIds.length > 0) {
       const matches = await prisma.match.findMany({
@@ -188,6 +203,7 @@ exports.getConversations = async (req, res) => {
       matches.forEach((match) => {
         const entry = buildConversationEntry(match, userId);
         if (entry) {
+          entry.unread = unreadByMatchId.get(entry.id) || 0;
           conversationMap.set(entry.id, entry);
         }
       });
@@ -240,6 +256,7 @@ exports.getConversations = async (req, res) => {
 
       const entry = buildConversationEntry(directMatch, userId);
       if (entry) {
+        entry.unread = unreadByMatchId.get(entry.id) || 0;
         conversationMap.set(entry.id, entry);
       }
     }

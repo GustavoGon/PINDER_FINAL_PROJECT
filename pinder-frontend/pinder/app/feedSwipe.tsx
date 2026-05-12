@@ -8,7 +8,6 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomNav from '../src/components/BottomNav';
 import MatchModal from '../src/components/MatchModal';
-import AdoptionModal from '../src/components/AdoptionModal';
 import { useActiveProfile } from '../src/contexts/ActiveProfileContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -33,8 +32,6 @@ export default function FeedSwipe() {
   const [myPetId, setMyPetId] = useState<string | null>(null);
   const [matchedPet, setMatchedPet] = useState<any>(null);
   const [showMatchModal, setShowMatchModal] = useState(false);
-  const [showAdoptionModal, setShowAdoptionModal] = useState(false);
-  const [adoptedPet, setAdoptedPet] = useState<any>(null);
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
@@ -188,9 +185,8 @@ export default function FeedSwipe() {
           console.log(`✅ Adoção guardada:`, adoptionData);
 
           if (adoptionData && isLike) {
-            // Mostrar modal de adoção apenas se foi like
-            setAdoptedPet(swipedPet);
-            setShowAdoptionModal(true);
+            setMatchedPet(swipedPet);
+            setShowMatchModal(true);
           } else if (isLike) {
             console.log(`❤️ Interesse registado em: ${swipedPet.name}`);
           } else {
@@ -240,13 +236,11 @@ export default function FeedSwipe() {
   const handleMatchModalClose = () => {
     setShowMatchModal(false);
     
-    // Ambos (tutor e pet) vão para matches após um match
-    router.push('/matches');
-  };
-
-  const handleAdoptionModalClose = () => {
-    setShowAdoptionModal(false);
-    // Continua na tela de swipe
+    if (activeProfile?.type === 'tutor') {
+      router.push('/chat');
+    } else {
+      router.push('/matches');
+    }
   };
 
   const resetPosition = () => {
@@ -465,13 +459,6 @@ export default function FeedSwipe() {
         petPhoto={matchedPet?.main_photo || ''}
         onClose={handleMatchModalClose}
         isTutor={activeProfile?.type === 'tutor'}
-      />
-
-      <AdoptionModal
-        visible={showAdoptionModal}
-        petName={adoptedPet?.name || ''}
-        petPhoto={adoptedPet?.main_photo || ''}
-        onClose={handleAdoptionModalClose}
       />
 
       <BottomNav activePage="home" />
