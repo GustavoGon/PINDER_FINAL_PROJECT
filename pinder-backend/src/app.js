@@ -16,6 +16,7 @@ const groupRoutes = require("./routes/group.routes");
 const districtRoutes = require("./routes/district.routes");
 const uploadRoutes = require("./routes/upload.routes");
 const setupChatSockets = require("./sockets/chat.socket");
+const eventRoutes = require("./routes/event.routes");
 const app = express();
 const server = http.createServer(app);
 
@@ -34,8 +35,9 @@ app.use("/matches", matchRoutes);
 app.use("/messages", messageRoutes);
 app.use("/groups", groupRoutes);
 app.use("/districts", districtRoutes);
-app.use("/upload", uploadRoutes);
 app.use("/recommendations", recommendationRoutes);
+app.use("/events", eventRoutes);
+app.use("/upload", uploadRoutes);
 
 // Rota de teste inicial
 app.get("/", (req, res) => {
