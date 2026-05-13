@@ -16,6 +16,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import socket from '../src/services/socket';
+import BottomNav from '../src/components/BottomNav';
 
 export default function ChatDetail() {
   const router = useRouter();
@@ -176,12 +177,13 @@ export default function ChatDetail() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <View style={styles.header}>
+    <View style={styles.mainContainer}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <FontAwesome5 name="chevron-left" size={16} color="#5C4A3D" />
         </TouchableOpacity>
@@ -240,11 +242,19 @@ export default function ChatDetail() {
           <FontAwesome5 name="paper-plane" size={16} color="white" />
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+
+      <BottomNav activePage="chat" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  mainContainer: { 
+    flex: 1, 
+    backgroundColor: '#F5F2EB',
+    position: 'relative',
+  },
   container: { flex: 1, backgroundColor: '#F5F2EB' },
   header: {
     flexDirection: 'row',
@@ -344,6 +354,7 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     padding: 10,
+    paddingBottom: Platform.OS === 'ios' ? 80 : 70,
     borderTopWidth: 1,
     borderColor: '#ddd',
     backgroundColor: 'white',

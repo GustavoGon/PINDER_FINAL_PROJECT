@@ -9,6 +9,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   TextInput,
+  Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -27,6 +30,9 @@ type Conversation = {
   matchId: string;
   otherPetId?: string;
   otherUserId?: string;
+  otherUserName?: string;
+  otherUserPhoto?: string;
+  otherUserLocation?: string;
   isInterested?: boolean;
   category: 'matches' | 'adoptions';
   lastMessageSenderId?: string | null;
@@ -41,6 +47,9 @@ export default function Chat() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentUserId, setCurrentUserId] = useState('');
   const [selectedTab, setSelectedTab] = useState<'matches' | 'adoptions'>('matches');
+  const [isActionModalVisible, setIsActionModalVisible] = useState(false);
+  const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
 
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
 
@@ -136,6 +145,53 @@ export default function Chat() {
     openConversation(chat);
   };
 
+  const handleLongPress = (chat: Conversation) => {
+    setSelectedConversation(chat);
+    setIsActionModalVisible(true);
+  };
+
+  const openSelectedProfile = () => {
+    if (!selectedConversation?.otherPetId) {
+      return;
+    }
+
+    setIsActionModalVisible(false);
+    router.push({ pathname: '/petProfile', params: { petId: selectedConversation.otherPetId } });
+  };
+
+  const openCancelConfirmation = () => {
+    setIsActionModalVisible(false);
+    setIsConfirmModalVisible(true);
+  };
+
+  const cancelMatch = async () => {
+    if (!selectedConversation) {
+      return;
+    }
+
+    try {
+      const resp = await fetch(`${API_URL}/matches/${selectedConversation.matchId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unmatched_by: currentUserId }),
+      });
+
+      if (!resp.ok) {
+        throw new Error('Erro ao cancelar match');
+      }
+
+      // remover da lista localmente
+      setConversations((prev) => prev.filter((c) => c.id !== selectedConversation.id));
+      setIsConfirmModalVisible(false);
+      setSelectedConversation(null);
+
+      Alert.alert('Feito', 'Match cancelado com sucesso');
+    } catch (err) {
+      console.error('cancelMatch error', err);
+      Alert.alert('Erro', 'Não foi possível cancelar o match');
+    }
+  };
+
   useEffect(() => {
     if (!isOpeningConversation) {
       return;
@@ -164,6 +220,10 @@ export default function Chat() {
     }
 
     return String(chat.lastMessageSenderId) === String(currentUserId);
+  };
+
+  const hasUnreadFromOtherUser = (chat: Conversation) => {
+    return chat.unread > 0 && !isLastMessageMine(chat);
   };
 
   return (
@@ -227,42 +287,131 @@ export default function Chat() {
                 isLastMessageMine(item) ? styles.chatItemMine : styles.chatItemOther,
               ]}
               onPress={() => openConversationOrAction(item)}
+              onLongPress={() => handleLongPress(item)}
             >
-              <Image source={{ uri: item.img }} style={styles.avatar} />
+              <Image
+                source={{ uri: item.otherUserPhoto || 'https://placehold.co/60x60/eeeeee/999999?text=Avatar' }}
+                style={styles.ownerAvatar}
+              />
 
-              <View style={styles.chatContent}>
-                <View style={styles.chatRowTop}>
-                  <View style={styles.chatTitleRow}>
-                    <Text style={styles.chatName}>{item.name}</Text>
-                    {item.isInterested && activeProfile?.type === 'tutor' && (
-                      <View style={styles.interestedBadge}>
-                        <Text style={styles.interestedBadgeText}>Interessado</Text>
-                      </View>
-                    )}
-                  </View>
+              <View style={styles.chatMiddle}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.ownerName}>{item.otherUserName || 'Utilizador'}</Text>
                   <Text style={styles.chatTime}>{item.time}</Text>
                 </View>
 
-                <Text style={styles.chatBreed}>{item.breed}</Text>
-
-                <View style={styles.chatRowBottom}>
-                  <View style={styles.messagePreviewContainer}>
-                    <Text style={styles.chatMsg} numberOfLines={1}>{item.msg}</Text>
-                  </View>
+                <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <FontAwesome5 name="paw" size={16} color="#A39A90" />
+                  <Text style={styles.petNameSmall}>{item.name}</Text>
                 </View>
+
+                {!hasUnreadFromOtherUser(item) && (
+                  <Text style={styles.chatMessageSmall} numberOfLines={1}>
+                    {item.msg}
+                  </Text>
+                )}
               </View>
 
-              <View style={styles.statusIndicatorRight}>
+              <View style={styles.rightSection}>
                 {isLastMessageMine(item) ? (
-                  <FontAwesome5 name="check-double" size={14} color="#4CAF50" />
-                ) : item.unread > 0 ? (
-                  <View style={styles.unreadDot} />
+                  <FontAwesome5 name="check-double" size={13} color="#4CAF50" />
+                ) : hasUnreadFromOtherUser(item) ? (
+                  <View style={styles.unreadBadge} />
                 ) : null}
               </View>
             </TouchableOpacity>
           )}
         />
       )}
+
+      <Modal
+        visible={isActionModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setIsActionModalVisible(false);
+          setSelectedConversation(null);
+        }}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => {
+            setIsActionModalVisible(false);
+            setSelectedConversation(null);
+          }}
+        >
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{selectedConversation?.otherUserName || 'Opcoes'}</Text>
+            <Text style={styles.modalSubtitle}>Escolha uma acao para esta conversa</Text>
+
+            <TouchableOpacity style={styles.modalActionButton} onPress={openSelectedProfile}>
+              <FontAwesome5 name="user" size={14} color="#5C4A3D" />
+              <Text style={styles.modalActionText}>Ver perfil do utilizador</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modalActionButton, styles.modalActionDanger]}
+              onPress={openCancelConfirmation}
+            >
+              <FontAwesome5 name="times-circle" size={14} color="#C0392B" />
+              <Text style={styles.modalActionDangerText}>Cancelar match</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalBackButton}
+              onPress={() => {
+                setIsActionModalVisible(false);
+                setSelectedConversation(null);
+              }}
+            >
+              <Text style={styles.modalBackText}>Voltar</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={isConfirmModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setIsConfirmModalVisible(false);
+          setSelectedConversation(null);
+        }}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => {
+            setIsConfirmModalVisible(false);
+            setSelectedConversation(null);
+          }}
+        >
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Cancelar match?</Text>
+            <Text style={styles.modalSubtitle}>
+              Esta acao remove o match e ele nao voltara a aparecer para este pet.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.modalActionButton, styles.modalActionDanger]}
+              onPress={cancelMatch}
+            >
+              <FontAwesome5 name="trash" size={14} color="#C0392B" />
+              <Text style={styles.modalActionDangerText}>Confirmar cancelamento</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalBackButton}
+              onPress={() => {
+                setIsConfirmModalVisible(false);
+                setSelectedConversation(null);
+              }}
+            >
+              <Text style={styles.modalBackText}>Voltar</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
 
       <BottomNav activePage="chat" />
     </View>
@@ -523,4 +672,164 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+    /* New styles for improved chat card */
+    ownerAvatar: {
+      width: 50,
+      height: 50,
+      borderRadius: 14,
+      backgroundColor: '#eee',
+      marginRight: 10,
+    },
+    chatMiddle: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    ownerInfo: {
+      marginBottom: 4,
+    },
+    ownerName: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: '#2F2A24',
+      marginBottom: 2,
+    },
+    locationRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    ownerLocation: {
+      fontSize: 11,
+      color: '#A39A90',
+    },
+    petInfoSmall: {
+      marginBottom: 4,
+    },
+    petNameSmall: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: '#5C4A3D',
+    },
+    petBreedSmall: {
+      fontSize: 11,
+      color: '#8D8379',
+      marginTop: 1,
+    },
+    chatMessageSmall: {
+      fontSize: 12,
+      color: '#7D736A',
+      marginTop: 2,
+    },
+    rightSection: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 10,
+      minWidth: 28,
+    },
+    petAvatarSmall: {
+      width: 48,
+      height: 48,
+      borderRadius: 12,
+      backgroundColor: '#eee',
+      marginBottom: 4,
+    },
+    statusIndicator: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: '#FFFFFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      elevation: 1,
+    },
+    unreadBadge: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: '#4CAF50',
+    },
+    unreadBubble: {
+      minWidth: 20,
+      height: 20,
+      borderRadius: 10,
+      paddingHorizontal: 5,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#4CAF50',
+    },
+    unreadBubbleText: {
+      color: 'white',
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.35)',
+      justifyContent: 'center',
+      paddingHorizontal: 24,
+    },
+    modalCard: {
+      backgroundColor: 'white',
+      borderRadius: 18,
+      padding: 18,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 14,
+      elevation: 8,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: '#2F2A24',
+      marginBottom: 4,
+    },
+    modalSubtitle: {
+      fontSize: 13,
+      color: '#7D736A',
+      marginBottom: 14,
+    },
+    modalActionButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderWidth: 1,
+      borderColor: '#E8E2D8',
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      marginBottom: 10,
+      backgroundColor: '#FDFBF8',
+    },
+    modalActionText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: '#5C4A3D',
+    },
+    modalActionDanger: {
+      borderColor: '#F3D4D0',
+      backgroundColor: '#FFF6F5',
+    },
+    modalActionDangerText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: '#C0392B',
+    },
+    modalBackButton: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 12,
+      paddingVertical: 11,
+      backgroundColor: '#EFE9DF',
+      marginTop: 4,
+    },
+    modalBackText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: '#5C4A3D',
+    },
 });

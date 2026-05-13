@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import BottomNav from '../src/components/BottomNav';
 
 export default function PetProfile() {
   const router = useRouter();
@@ -46,22 +47,29 @@ export default function PetProfile() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#5C4A3D" />
+      <View style={styles.mainContainer}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#5C4A3D" />
+        </View>
+        <BottomNav activePage="profile" />
       </View>
     );
   }
 
   if (!pet) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>Não foi possível carregar o pet.</Text>
+      <View style={styles.mainContainer}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.errorText}>Não foi possível carregar o pet.</Text>
+        </View>
+        <BottomNav activePage="profile" />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.mainContainer}>
+      <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <FontAwesome5 name="chevron-left" size={16} color="#5C4A3D" />
@@ -97,11 +105,19 @@ export default function PetProfile() {
           </View>
         </View>
       </ScrollView>
+      </View>
+
+      <BottomNav activePage="profile" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  mainContainer: { 
+    flex: 1, 
+    backgroundColor: '#F5F2EB',
+    position: 'relative',
+  },
   container: { flex: 1, backgroundColor: '#F5F2EB' },
   loadingContainer: {
     flex: 1,

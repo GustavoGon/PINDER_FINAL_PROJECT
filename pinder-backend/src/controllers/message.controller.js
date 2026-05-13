@@ -7,9 +7,10 @@ function buildConversationEntry(match, currentUserId) {
   const currentUserOwnsPet2 = pet2?.owner?.user_id === currentUserId;
 
   const otherPet = currentUserOwnsPet1 ? pet2 : pet1;
+  const otherUser = otherPet?.owner;
   const lastMessage = match.messages?.[0] || null;
 
-  if (!otherPet) {
+  if (!otherPet || !otherUser) {
     return null;
   }
 
@@ -24,7 +25,10 @@ function buildConversationEntry(match, currentUserId) {
     img: otherPet.main_photo || "https://placehold.co/150x150/eeeeee/999999?text=Sem+Foto",
     matchId: match.match_id,
     otherPetId: otherPet.pet_id,
-    otherUserId: otherPet.owner?.user_id,
+    otherUserId: otherUser.user_id,
+    otherUserName: otherUser.username,
+    otherUserPhoto: otherUser.photo || "https://placehold.co/100x100/eeeeee/999999?text=Sem+Avatar",
+    otherUserLocation: otherUser.location || null,
     isInterested: Boolean(match.is_adoption),
     _sortTimestamp: lastMessage?.timestamp || match.timestamp,
   };
