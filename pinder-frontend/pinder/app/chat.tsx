@@ -50,6 +50,7 @@ export default function Chat() {
   const [isActionModalVisible, setIsActionModalVisible] = useState(false);
   const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [myPets, setMyPets] = useState<any[]>([]);
 
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
 
@@ -101,6 +102,17 @@ export default function Chat() {
         return;
       }
 
+      // Carregar os pets do utilizador para identificar se é o Dono ou Adotante em cada conversa
+      try {
+        const petsRes = await fetch(`${API_URL}/pets/user/${myUserId}`);
+        if (petsRes.ok) {
+          const petsData = await petsRes.json();
+          setMyPets(petsData);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar pets do user:', error);
+      }
+
       const response = await fetch(`${API_URL}/messages/conversations/${myUserId}`);
       if (!response.ok) {
         throw new Error('Erro ao carregar conversas');
@@ -123,10 +135,49 @@ export default function Chat() {
     }
   };
 
+  const getChatDisplayInfo = (chat: Conversation) => {
+    // Verifica se o pet na conversa pertence ao utilizador atual
+    const isMyPet = myPets.some(
+      (p) => 
+        (chat.otherPetId && p.pet_id === chat.otherPetId) || 
+        (p.name === chat.name)
+    );
+
+    if (chat.category === 'adoptions') {
+      if (isMyPet) {
+        // O utilizador é o Dono do Pet (DD). Quer ver os dados do Adotante (EE).
+        return {
+          avatar: chat.otherUserPhoto || 'https://placehold.co/60x60/eeeeee/999999?text=Avatar',
+          title: chat.otherUserName || 'Adotante',
+          subtitle: `Interesse em ${chat.name}`,
+          subtitleIcon: 'heart' as const
+        };
+      } else {
+        // O utilizador é o Adotante (EE). Quer ver os dados do Pet que vai adotar.
+        return {
+          avatar: chat.img || 'https://placehold.co/60x60/eeeeee/999999?text=Pet',
+          title: chat.name,
+          subtitle: chat.otherUserName || 'Tutor',
+          subtitleIcon: 'paw' as const
+        };
+      }
+    } else {
+      // MATCHES (Amizade) -> Vê sempre os dados do outro Pet
+      return {
+        avatar: chat.img || 'https://placehold.co/60x60/eeeeee/999999?text=Pet',
+        title: chat.name,
+        subtitle: chat.otherUserName || 'Tutor',
+        subtitleIcon: 'paw' as const
+      };
+    }
+  };
+
   const openConversation = (chat: Conversation) => {
     if (isOpeningConversation) {
       return;
     }
+
+    const displayInfo = getChatDisplayInfo(chat);
 
     setIsOpeningConversation(true);
     router.push({
@@ -135,8 +186,8 @@ export default function Chat() {
         matchId: chat.matchId,
         userId: chat.otherUserId || '',
         senderUserId: currentUserId,
-        petName: chat.name,
-        petPhoto: chat.img,
+        petName: displayInfo.title,
+        petPhoto: displayInfo.avatar,
       },
     });
   };
@@ -280,7 +331,9 @@ export default function Chat() {
           data={filteredConversations}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            const displayInfo = getChatDisplayInfo(item);
+            return (
             <TouchableOpacity
               style={[
                 styles.chatItem,
@@ -290,19 +343,19 @@ export default function Chat() {
               onLongPress={() => handleLongPress(item)}
             >
               <Image
-                source={{ uri: item.otherUserPhoto || 'https://placehold.co/60x60/eeeeee/999999?text=Avatar' }}
+                source={{ uri: displayInfo.avatar }}
                 style={styles.ownerAvatar}
               />
 
               <View style={styles.chatMiddle}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={styles.ownerName}>{item.otherUserName || 'Utilizador'}</Text>
+                  <Text style={styles.ownerName}>{displayInfo.title}</Text>
                   <Text style={styles.chatTime}>{item.time}</Text>
                 </View>
 
                 <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <FontAwesome5 name="paw" size={16} color="#A39A90" />
-                  <Text style={styles.petNameSmall}>{item.name}</Text>
+                  <FontAwesome5 name={displayInfo.subtitleIcon} size={16} color="#A39A90" />
+                  <Text style={styles.petNameSmall}>{displayInfo.subtitle}</Text>
                 </View>
 
                 {!hasUnreadFromOtherUser(item) && (
@@ -320,7 +373,8 @@ export default function Chat() {
                 ) : null}
               </View>
             </TouchableOpacity>
-          )}
+            );
+          }}
         />
       )}
 

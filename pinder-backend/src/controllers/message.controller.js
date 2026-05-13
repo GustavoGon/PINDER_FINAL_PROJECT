@@ -1,13 +1,45 @@
 const prisma = require("../prisma");
 
-function buildConversationEntry(match, currentUserId) {
+async function buildConversationEntry(match, currentUserId) {
   const pet1 = match.pet1;
   const pet2 = match.pet2;
   const currentUserOwnsPet1 = pet1?.owner?.user_id === currentUserId;
   const currentUserOwnsPet2 = pet2?.owner?.user_id === currentUserId;
 
   const otherPet = currentUserOwnsPet1 ? pet2 : pet1;
-  const otherUser = otherPet?.owner;
+  let otherUser = otherPet?.owner;
+
+  // Corrige o caso em que o adotante não tem pet na conversa (pet_1_id == pet_2_id)
+  if (match.is_adoption && pet1 && pet2 && pet1.pet_id === pet2.pet_id) {
+    if (currentUserOwnsPet1) {
+      // O usuário atual é o Dono do Pet. Precisamos descobrir quem é o Adotante.
+      try {
+        let adopterId = null;
+        // 1. Tenta encontrar a primeira mensagem enviada por outra pessoa
+        const messageFromOther = await prisma.message.findFirst({
+          where: { match_id: match.match_id, sender_id: { not: currentUserId } }
+        });
+        
+        if (messageFromOther && messageFromOther.sender_id) {
+          adopterId = messageFromOther.sender_id;
+        } else {
+          // 2. Procura a última pessoa a demonstrar interesse
+          const interaction = await prisma.tutorAdoptionInteraction.findFirst({
+            where: { pet_id: pet1.pet_id, like_dislike: true },
+            orderBy: { timestamp: 'desc' }
+          });
+          if (interaction && interaction.tutor_id) adopterId = interaction.tutor_id;
+        }
+        if (adopterId) {
+          const adopter = await prisma.user.findUnique({ where: { user_id: adopterId } });
+          if (adopter) otherUser = adopter;
+        }
+      } catch (err) {
+        console.error("Erro ao procurar adotante na conversa:", err);
+      }
+    }
+  }
+
   const lastMessage = match.messages?.[0] || null;
 
   if (!otherPet || !otherUser) {
@@ -204,8 +236,11 @@ exports.getConversations = async (req, res) => {
         },
       });
 
-      matches.forEach((match) => {
-        const entry = buildConversationEntry(match, userId);
+      const builtMatches = await Promise.all(
+        matches.map((match) => buildConversationEntry(match, userId))
+      );
+
+      builtMatches.forEach((entry) => {
         if (entry) {
           entry.unread = unreadByMatchId.get(entry.id) || 0;
           conversationMap.set(entry.id, entry);
@@ -258,7 +293,7 @@ exports.getConversations = async (req, res) => {
         continue;
       }
 
-      const entry = buildConversationEntry(directMatch, userId);
+      const entry = await buildConversationEntry(directMatch, userId);
       if (entry) {
         entry.unread = unreadByMatchId.get(entry.id) || 0;
         conversationMap.set(entry.id, entry);
