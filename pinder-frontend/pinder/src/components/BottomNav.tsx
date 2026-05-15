@@ -40,7 +40,7 @@ export default function BottomNav({ activePage }: BottomNavProps) {
 
         <TouchableOpacity style={styles.navItem} onPress={() => navigateTo('/grupos')}>
           <FontAwesome5 name="users" size={24} color={activePage === 'groups' ? '#5C4A3D' : '#B0A8A0'} />
-          <Text style={[styles.navText, activePage === 'groups' && styles.activeText]}>Em Grupo</Text>
+          <Text style={[styles.navText, activePage === 'groups' && styles.activeText]}>Eventos</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.navItem} onPress={() => navigateTo('/chat')}>

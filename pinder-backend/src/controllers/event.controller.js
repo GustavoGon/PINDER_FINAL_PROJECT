@@ -1,5 +1,4 @@
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const prisma = require("../prisma");
 
 const { getEventStatus } = require("../utils/event.utils");
 const { getNearbyEvents } = require("../services/event.service");

@@ -1,179 +1,507 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Platform, ScrollView, ActivityIndicator, FlatList, Image, TouchableOpacity, RefreshControl, TextInput, Modal, KeyboardAvoidingView } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Platform,
+  NativeModules,
+  ScrollView,
+  ActivityIndicator,
+  TouchableOpacity,
+  RefreshControl,
+  TextInput,
+  Modal,
+  KeyboardAvoidingView,
+  FlatList,
+  Image,
+  Alert,
+} from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import BottomNav from '../src/components/BottomNav';
+import { useActiveProfile } from '../src/contexts/ActiveProfileContext';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
+type EventStatus = 'UPCOMING' | 'ONGOING' | 'FINISHED' | 'CANCELLED';
+type StatusFilter = 'ALL' | 'UPCOMING' | 'ONGOING';
+
+interface EventAttendee {
+  event_id: string;
+  user_id: string;
+  pet_id: string | null;
+  joined_at: string;
+  user?: { username?: string | null };
+  pet?: { name?: string | null; main_photo?: string | null };
+}
+
+interface EventItem {
+  event_id: string;
+  title: string;
+  description: string | null;
+  starts_at: string;
+  ends_at: string | null;
+  location: string;
+  latitude: number;
+  longitude: number;
+  image: string | null;
+  max_attendees: number | null;
+  attendee_count: number;
+  status?: EventStatus;
+  distance?: number;
+  attendees?: EventAttendee[];
+}
+
+interface ParkSpot {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
+interface Region {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+}
+
+const RADIUS_OPTIONS = [5, 10, 25, 50];
+
+const hasNativeMapsModule =
+  Platform.OS === 'web' ||
+  Boolean(
+    (NativeModules as any)?.AIRMapModule ||
+      (NativeModules as any)?.AirMapModule ||
+      (NativeModules as any)?.RNMapsAirModule,
+  );
+
+let MapViewComponent: any = null;
+let MarkerComponent: any = null;
+let GoogleProvider: any = undefined;
+
+if (hasNativeMapsModule) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Maps = require('react-native-maps');
+    MapViewComponent = Maps.default;
+    MarkerComponent = Maps.Marker;
+    GoogleProvider = Maps.PROVIDER_GOOGLE;
+  } catch (error) {
+    console.warn('react-native-maps indisponivel neste runtime:', error);
+  }
+}
+
 export default function GruposEventos() {
-  const [events, setEvents] = useState([]);
+  const { activeProfile } = useActiveProfile();
+
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [parks, setParks] = useState<ParkSpot[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
-  const [userLocation, setUserLocation] = useState(null);
-  const [radius, setRadius] = useState(10); // 10km
+  const [error, setError] = useState<string | null>(null);
+
   const [searchTerm, setSearchTerm] = useState('');
-  const [subscribedGroups, setSubscribedGroups] = useState(new Set());
-  const [userId, setUserId] = useState(null);
+  const [radius, setRadius] = useState(10);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [mapRegion, setMapRegion] = useState<Region | null>(null);
+
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [joinedEventIds, setJoinedEventIds] = useState<Set<string>>(new Set());
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creatingEvent, setCreatingEvent] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+
+  const [showAttendeesModal, setShowAttendeesModal] = useState(false);
+  const [attendeesLoading, setAttendeesLoading] = useState(false);
+  const [selectedEventTitle, setSelectedEventTitle] = useState('');
+  const [eventAttendees, setEventAttendees] = useState<EventAttendee[]>([]);
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     location: '',
-    date: new Date(),
-    time: new Date(),
     maxAttendees: '',
+    startsDate: new Date(),
+    startsTime: new Date(),
+    hasEndAt: false,
+    endsDate: new Date(),
+    endsTime: new Date(),
   });
 
   useEffect(() => {
-    // Simular user_id (em produção viria de auth)
-    setUserId('user-123');
+    const loadCurrentUser = async () => {
+      try {
+        const userStr = await AsyncStorage.getItem('user');
+        const user = userStr ? JSON.parse(userStr) : null;
+        const userId = user?.user_id || user?.id || null;
+        setCurrentUserId(userId);
+      } catch (storageError) {
+        console.error('Erro ao carregar utilizador:', storageError);
+      }
+    };
 
-    // Pegar localização
+    loadCurrentUser();
+  }, []);
+
+  useEffect(() => {
     const getLocation = async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          setUserLocation({ latitude: 40.283, longitude: -7.5 });
+          const fallback = { latitude: 40.283, longitude: -7.5 };
+          setUserLocation(fallback);
+          setMapRegion({
+            ...fallback,
+            latitudeDelta: 0.08,
+            longitudeDelta: 0.08,
+          });
           return;
         }
 
         const location = await Location.getCurrentPositionAsync({});
-        setUserLocation({
+        const nextLocation = {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
+        };
+
+        setUserLocation(nextLocation);
+        setMapRegion({
+          ...nextLocation,
+          latitudeDelta: 0.08,
+          longitudeDelta: 0.08,
         });
-      } catch (err) {
-        console.error('Erro ao pegar localização:', err);
-        setUserLocation({ latitude: 40.283, longitude: -7.5 });
+      } catch (locationError) {
+        console.error('Erro ao obter localizacao:', locationError);
+        const fallback = { latitude: 40.283, longitude: -7.5 };
+        setUserLocation(fallback);
+        setMapRegion({
+          ...fallback,
+          latitudeDelta: 0.08,
+          longitudeDelta: 0.08,
+        });
       }
     };
 
     getLocation();
   }, []);
 
-  useEffect(() => {
-    if (userLocation) {
-      fetchEvents();
-    }
-  }, [userLocation, radius]);
-
-  const fetchEvents = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const params = new URLSearchParams({
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        radius,
-      });
-
-      const response = await fetch(`${API_URL}/groups?${params}`);
-
-      if (!response.ok) {
-        throw new Error('Erro ao buscar eventos');
-      }
-
-      const data = await response.json();
-      setEvents(data);
-    } catch (err) {
-      setError(err.message);
-      console.error('Erro:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    if (userLocation) {
-      fetchEvents();
-    }
-  };
-
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
 
-  const handleSubscribe = async (groupId) => {
-    if (!userId) {
-      alert('Por favor, faça login');
+  const buildPreviewPoint = (latitude: number, longitude: number) => {
+    if (!mapRegion) {
+      return { left: '50%', top: '50%' };
+    }
+
+    const latSpan = Math.max(mapRegion.latitudeDelta, 0.01);
+    const lonSpan = Math.max(mapRegion.longitudeDelta, 0.01);
+
+    const xRatio = (longitude - mapRegion.longitude) / lonSpan;
+    const yRatio = (mapRegion.latitude - latitude) / latSpan;
+
+    return {
+      left: `${Math.max(6, Math.min(94, 50 + xRatio * 62))}%`,
+      top: `${Math.max(8, Math.min(90, 50 + yRatio * 62))}%`,
+    };
+  };
+
+  const fetchEvents = useCallback(async (fromPullToRefresh: boolean) => {
+    if (!userLocation) {
       return;
     }
 
     try {
-      const response = await fetch(`${API_URL}/groups/${groupId}/join`, {
+      if (!fromPullToRefresh) {
+        setLoading(true);
+      }
+      setError(null);
+
+      const params = new URLSearchParams({
+        latitude: String(userLocation.latitude),
+        longitude: String(userLocation.longitude),
+      });
+
+      const response = await fetch(`${API_URL}/events/recommendations?${params.toString()}`);
+
+      if (!response.ok) {
+        throw new Error('Erro ao procurar eventos');
+      }
+
+      const data: EventItem[] = await response.json();
+      const enriched = data
+        .map((event) => ({
+          ...event,
+          distance:
+            typeof event.distance === 'number'
+              ? event.distance
+              : calculateDistance(
+                  userLocation.latitude,
+                  userLocation.longitude,
+                  event.latitude,
+                  event.longitude,
+                ),
+        }))
+        .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+
+      setEvents(enriched);
+
+      if (currentUserId) {
+        const joined = new Set<string>();
+        enriched.forEach((event) => {
+          if (event.attendees?.some((attendee) => attendee.user_id === currentUserId)) {
+            joined.add(event.event_id);
+          }
+        });
+        setJoinedEventIds(joined);
+      }
+    } catch (fetchError) {
+      const message = fetchError instanceof Error ? fetchError.message : 'Erro ao procurar eventos';
+      setError(message);
+      console.error(fetchError);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [userLocation, currentUserId]);
+
+  const fetchNearbyParks = useCallback(async () => {
+    if (!userLocation) {
+      return;
+    }
+
+    try {
+      const radiusMeters = Math.min(radius * 1000, 50000);
+      const query = `[out:json][timeout:15];(node["leisure"="park"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});way["leisure"="park"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});relation["leisure"="park"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude}););out center 20;`;
+
+      const response = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=${encodeURIComponent(query)}`,
+      });
+
+      if (!response.ok) {
+        console.warn(`Overpass indisponivel (status ${response.status}). A continuar sem parques.`);
+        setParks([]);
+        return;
+      }
+
+      const payload = await response.json();
+      const mapped: ParkSpot[] = (payload.elements || [])
+        .map((element: any) => {
+          const latitude = element.lat ?? element.center?.lat;
+          const longitude = element.lon ?? element.center?.lon;
+          const name = element.tags?.name || 'Parque';
+
+          if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+            return null;
+          }
+
+          return {
+            id: `park-${element.type}-${element.id}`,
+            name,
+            latitude,
+            longitude,
+          } as ParkSpot;
+        })
+        .filter((park: ParkSpot | null): park is ParkSpot => park !== null)
+        .slice(0, 20);
+
+      setParks(mapped);
+    } catch {
+      console.warn('Nao foi possivel carregar parques nesta tentativa.');
+      setParks([]);
+    }
+  }, [userLocation, radius]);
+
+  useEffect(() => {
+    if (!userLocation) {
+      return;
+    }
+
+    void Promise.all([fetchEvents(false), fetchNearbyParks()]);
+  }, [userLocation, fetchEvents, fetchNearbyParks]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    void Promise.all([fetchEvents(true), fetchNearbyParks()]);
+  };
+
+  const filteredEvents = useMemo(() => {
+    const now = new Date();
+
+    return events.filter((event) => {
+      const titleMatch = event.title.toLowerCase().includes(searchTerm.toLowerCase());
+      const locationMatch = event.location.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const effectiveDistance =
+        typeof event.distance === 'number'
+          ? event.distance
+          : userLocation
+            ? calculateDistance(userLocation.latitude, userLocation.longitude, event.latitude, event.longitude)
+            : Number.MAX_SAFE_INTEGER;
+
+      const inRadius = effectiveDistance <= radius;
+
+      let statusMatch = true;
+      if (statusFilter === 'UPCOMING') {
+        statusMatch = new Date(event.starts_at) > now;
+      } else if (statusFilter === 'ONGOING') {
+        const startsAt = new Date(event.starts_at);
+        const endsAt = event.ends_at ? new Date(event.ends_at) : null;
+        statusMatch = startsAt <= now && (!endsAt || endsAt >= now);
+      }
+
+      return (titleMatch || locationMatch) && inRadius && statusMatch && event.status !== 'CANCELLED';
+    });
+  }, [events, searchTerm, radius, statusFilter, userLocation]);
+
+  const futureEvents = useMemo(() => {
+    const now = new Date();
+    return filteredEvents
+      .filter((event) => new Date(event.starts_at).getTime() >= now.getTime() - 60 * 1000)
+      .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+  }, [filteredEvents]);
+
+  const isUserJoined = (eventId: string) => joinedEventIds.has(eventId);
+
+  const formatEventDate = (dateIso: string) => {
+    const date = new Date(dateIso);
+    return `${date.toLocaleDateString('pt-PT', {
+      weekday: 'short',
+      day: '2-digit',
+      month: '2-digit',
+    })} ${date.toLocaleTimeString('pt-PT', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  };
+
+  const handleJoinEvent = async (eventId: string) => {
+    if (!currentUserId) {
+      Alert.alert('Sessao', 'Faz login para te juntares a um evento.');
+      return;
+    }
+
+    const petId = activeProfile?.type === 'pet' ? activeProfile.id : null;
+
+    try {
+      const response = await fetch(`${API_URL}/events/${eventId}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, pet_id: null }),
+        body: JSON.stringify({ user_id: currentUserId, pet_id: petId }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao inscrever');
+        throw new Error(errorData.error || 'Nao foi possivel entrar no evento');
       }
 
-      setSubscribedGroups(prev => new Set([...prev, groupId]));
-      alert('Inscrito com sucesso!');
-    } catch (err) {
-      alert('Erro: ' + err.message);
+      setJoinedEventIds((prev) => new Set([...prev, eventId]));
+      Alert.alert('Sucesso', 'Entraste no evento.');
+      await fetchEvents(false);
+    } catch (joinError) {
+      const message = joinError instanceof Error ? joinError.message : 'Erro ao entrar no evento';
+      Alert.alert('Erro', message);
+    }
+  };
+
+  const handleOpenAttendees = async (eventId: string, title: string) => {
+    try {
+      setShowAttendeesModal(true);
+      setAttendeesLoading(true);
+      setSelectedEventTitle(title);
+
+      const response = await fetch(`${API_URL}/events/${eventId}`);
+      if (!response.ok) {
+        throw new Error('Nao foi possivel carregar participantes');
+      }
+
+      const eventDetail: EventItem = await response.json();
+      setEventAttendees(eventDetail.attendees || []);
+    } catch (attendeesError) {
+      const message = attendeesError instanceof Error ? attendeesError.message : 'Erro ao carregar participantes';
+      Alert.alert('Erro', message);
+      setEventAttendees([]);
+    } finally {
+      setAttendeesLoading(false);
     }
   };
 
   const handleCreateEvent = async () => {
+    if (!currentUserId) {
+      Alert.alert('Sessao', 'Faz login para criar eventos.');
+      return;
+    }
+
     if (!formData.title.trim()) {
-      alert('Por favor, insira um título');
+      Alert.alert('Validacao', 'Indica um titulo para o evento.');
       return;
     }
 
     if (!formData.location.trim()) {
-      alert('Por favor, insira a localização');
+      Alert.alert('Validacao', 'Indica a localizacao do evento.');
       return;
     }
 
     if (!userLocation) {
-      alert('Localização não disponível');
+      Alert.alert('Localizacao', 'Nao foi possivel obter localizacao atual.');
       return;
+    }
+
+    const startsAt = new Date(formData.startsDate);
+    startsAt.setHours(formData.startsTime.getHours(), formData.startsTime.getMinutes(), 0, 0);
+
+    let endsAt: Date | null = null;
+    if (formData.hasEndAt) {
+      endsAt = new Date(formData.endsDate);
+      endsAt.setHours(formData.endsTime.getHours(), formData.endsTime.getMinutes(), 0, 0);
+      if (endsAt <= startsAt) {
+        Alert.alert('Validacao', 'A hora final deve ser depois da hora inicial.');
+        return;
+      }
     }
 
     try {
       setCreatingEvent(true);
 
-      // Combinar data e hora
-      const eventDateTime = new Date(formData.date);
-      eventDateTime.setHours(formData.time.getHours(), formData.time.getMinutes());
-
       const payload = {
-        title: formData.title,
-        description: formData.description || null,
-        date: eventDateTime.toISOString(),
-        time: `${String(formData.time.getHours()).padStart(2, '0')}:${String(formData.time.getMinutes()).padStart(2, '0')}`,
-        location: formData.location,
+        title: formData.title.trim(),
+        description: formData.description.trim() || null,
+        starts_at: startsAt.toISOString(),
+        ends_at: endsAt ? endsAt.toISOString() : null,
+        location: formData.location.trim(),
         latitude: userLocation.latitude,
         longitude: userLocation.longitude,
-        max_attendees: formData.maxAttendees ? parseInt(formData.maxAttendees) : null,
         image: null,
-        created_by: userId
+        max_attendees: formData.maxAttendees ? parseInt(formData.maxAttendees, 10) : null,
+        created_by: currentUserId,
       };
 
-      const response = await fetch(`${API_URL}/groups`, {
+      const response = await fetch(`${API_URL}/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -181,151 +509,85 @@ export default function GruposEventos() {
         throw new Error(errorData.error || 'Erro ao criar evento');
       }
 
-      const newEvent = await response.json();
-      alert('Evento criado com sucesso!');
+      const createdEvent = await response.json();
+      const distance = calculateDistance(
+        userLocation.latitude,
+        userLocation.longitude,
+        createdEvent.latitude,
+        createdEvent.longitude,
+      );
 
-      // Resetar formulário
+      const optimisticEvent: EventItem = {
+        ...createdEvent,
+        distance,
+        attendee_count: createdEvent.attendee_count ?? 0,
+        attendees: createdEvent.attendees ?? [],
+      };
+
+      setEvents((prev) => {
+        const filtered = prev.filter((event) => event.event_id !== optimisticEvent.event_id);
+        return [optimisticEvent, ...filtered].sort(
+          (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
+        );
+      });
+
       setFormData({
         title: '',
         description: '',
         location: '',
-        date: new Date(),
-        time: new Date(),
         maxAttendees: '',
+        startsDate: new Date(),
+        startsTime: new Date(),
+        hasEndAt: false,
+        endsDate: new Date(),
+        endsTime: new Date(),
       });
-
       setShowCreateModal(false);
-      fetchEvents();
-    } catch (err) {
-      alert('Erro: ' + err.message);
-      console.error('Erro:', err);
+
+      Alert.alert('Sucesso', 'Evento criado com sucesso.');
+      await fetchEvents(false);
+    } catch (createError) {
+      const message = createError instanceof Error ? createError.message : 'Erro ao criar evento';
+      Alert.alert('Erro', message);
     } finally {
       setCreatingEvent(false);
     }
   };
 
-  const handleDateChange = (event, selectedDate) => {
-    if (Platform.OS === 'android') setShowDatePicker(false);
-    if (selectedDate) {
-      setFormData(prev => ({
-        ...prev,
-        date: selectedDate
-      }));
+  const onDateChange = (
+    pickerEvent: DateTimePickerEvent,
+    selectedDate: Date | undefined,
+    key: 'startsDate' | 'endsDate',
+    closePicker: () => void,
+  ) => {
+    if (Platform.OS === 'android') {
+      closePicker();
+    }
+    if (pickerEvent.type === 'set' && selectedDate) {
+      setFormData((prev) => ({ ...prev, [key]: selectedDate }));
     }
   };
 
-  const handleTimeChange = (event, selectedTime) => {
-    if (Platform.OS === 'android') setShowTimePicker(false);
-    if (selectedTime) {
-      setFormData(prev => ({
-        ...prev,
-        time: selectedTime
-      }));
+  const onTimeChange = (
+    pickerEvent: DateTimePickerEvent,
+    selectedDate: Date | undefined,
+    key: 'startsTime' | 'endsTime',
+    closePicker: () => void,
+  ) => {
+    if (Platform.OS === 'android') {
+      closePicker();
     }
-  };
-
-  const formatDate = (date) => {
-    if (!date) return '';
-    return new Date(date).toISOString().split('T')[0];
-  };
-
-  const formatTime = (date) => {
-    if (!date) return '';
-    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-  };
-
-  const filteredEvents = events.filter(event =>
-    event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    event.location.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const renderEventCard = ({ item }) => {
-    const isSubscribed = subscribedGroups.has(item.group_id);
-    const distance = userLocation ?
-      calculateDistance(userLocation.latitude, userLocation.longitude, item.latitude, item.longitude)
-      : 0;
-
-    const eventDate = new Date(item.date);
-    const formattedDate = `${eventDate.toLocaleDateString('pt-PT', { weekday: 'short' })}, ${eventDate.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}`;
-
-    return (
-      <View style={styles.eventCard}>
-        {item.image ? (
-          <Image source={{ uri: item.image }} style={styles.eventImg} />
-        ) : (
-          <View style={styles.eventImgPlaceholder}>
-            <FontAwesome5 name="paw" size={24} color="#E87A4D" />
-          </View>
-        )}
-
-        <View style={styles.eventInfo}>
-          <Text style={styles.eventTitle}>{item.title}</Text>
-          {item.description && (
-            <Text style={styles.eventDescription}>{item.description}</Text>
-          )}
-          <View style={styles.eventRow}>
-            <FontAwesome5 name="calendar-alt" size={12} color="#57B2A1" />
-            <Text style={styles.eventMeta}>{formattedDate}</Text>
-          </View>
-          <View style={styles.eventRow}>
-            <FontAwesome5 name="map-marker-alt" size={12} color="#57B2A1" />
-            <Text style={styles.eventMeta}>{item.location}</Text>
-          </View>
-          <View style={styles.eventRow}>
-            <FontAwesome5 name="ruler" size={12} color="#57B2A1" />
-            <Text style={styles.eventMeta}>{distance.toFixed(1)} km</Text>
-          </View>
-
-          <View style={styles.eventBottom}>
-            <Text style={styles.attendeeCount}>
-              {item._count?.attendees || 0} inscritos
-              {item.max_attendees && ` / ${item.max_attendees}`}
-            </Text>
-            <TouchableOpacity
-              style={[
-                styles.btnSubscribe,
-                isSubscribed && styles.btnSubscribed,
-              ]}
-              onPress={() => handleSubscribe(item.group_id)}
-              disabled={isSubscribed}
-            >
-              <Text style={styles.btnSubscribeText}>
-                {isSubscribed ? '✓ Inscrito' : 'Inscrever'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    );
+    if (pickerEvent.type === 'set' && selectedDate) {
+      setFormData((prev) => ({ ...prev, [key]: selectedDate }));
+    }
   };
 
   if (loading && !refreshing) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Eventos em Grupo</Text>
-        </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#57B2A1" />
-          <Text style={styles.loadingText}>A carregar eventos...</Text>
-        </View>
-        <BottomNav activePage="groups" />
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Eventos em Grupo</Text>
-        </View>
-        <View style={styles.errorContainer}>
-          <FontAwesome5 name="exclamation-circle" size={40} color="#E87A4D" />
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={handleRefresh}>
-            <Text style={styles.retryBtnText}>Tentar Novamente</Text>
-          </TouchableOpacity>
+          <Text style={styles.loadingText}>A carregar eventos e parques...</Text>
         </View>
         <BottomNav activePage="groups" />
       </View>
@@ -334,176 +596,458 @@ export default function GruposEventos() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Eventos em Grupo</Text>
-          <TouchableOpacity 
-            style={styles.btnCreateEvent}
-            onPress={() => setShowCreateModal(true)}
-          >
-            <FontAwesome5 name="plus" size={20} color="white" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Search Bar */}
-      <View style={styles.searchWrapper}>
-        <FontAwesome5 name="search" size={16} color="#888" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Pesquisar eventos..."
-          placeholderTextColor="#A9A096"
-          value={searchTerm}
-          onChangeText={setSearchTerm}
-        />
-      </View>
-
-      {/* Radius Filter */}
-      <View style={styles.filterRow}>
-        <Text style={styles.filterLabel}>Raio:</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.radiusScroll}>
-          {[5, 10, 25, 50].map(r => (
-            <TouchableOpacity
-              key={r}
-              style={[
-                styles.radiusBtn,
-                radius === r && styles.radiusBtnActive,
-              ]}
-              onPress={() => setRadius(r)}
-            >
-              <Text style={[
-                styles.radiusBtnText,
-                radius === r && styles.radiusBtnTextActive,
-              ]}>
-                {r} km
-              </Text>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      >
+        <View style={styles.sectionOne}>
+          <View style={styles.headerRow}>
+            <Text style={styles.screenTitle}>Eventos</Text>
+            <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateModal(true)}>
+              <FontAwesome5 name="plus" size={14} color="white" />
+              <Text style={styles.createButtonText}>Criar</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+          </View>
 
-      {/* Events List */}
-      {filteredEvents.length > 0 ? (
-        <FlatList
-          data={filteredEvents}
-          renderItem={renderEventCard}
-          keyExtractor={(item) => item.group_id}
-          contentContainerStyle={styles.eventsList}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-          }
-        />
-      ) : (
-        <View style={styles.emptyContainer}>
-          <FontAwesome5 name="calendar-times" size={40} color="#D6CEC3" />
-          <Text style={styles.emptyText}>Nenhum evento próximo</Text>
+          <View style={styles.searchWrapper}>
+            <FontAwesome5 name="search" size={14} color="#8B837A" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Pesquisar eventos ou local"
+              placeholderTextColor="#A9A096"
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+            />
+          </View>
+
+          <Text style={styles.filterTitle}>Raio</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+            {RADIUS_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={[styles.chip, radius === option && styles.chipActive]}
+                onPress={() => setRadius(option)}
+              >
+                <Text style={[styles.chipText, radius === option && styles.chipTextActive]}>{option} km</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <Text style={styles.filterTitle}>Estado</Text>
+          <View style={styles.statusRow}>
+            {[
+              { key: 'ALL', label: 'Todos' },
+              { key: 'UPCOMING', label: 'Futuros' },
+              { key: 'ONGOING', label: 'A decorrer' },
+            ].map((statusOption) => (
+              <TouchableOpacity
+                key={statusOption.key}
+                style={[
+                  styles.statusButton,
+                  statusFilter === statusOption.key && styles.statusButtonActive,
+                ]}
+                onPress={() => setStatusFilter(statusOption.key as StatusFilter)}
+              >
+                <Text
+                  style={[
+                    styles.statusButtonText,
+                    statusFilter === statusOption.key && styles.statusButtonTextActive,
+                  ]}
+                >
+                  {statusOption.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
-      )}
 
-      {/* Modal Criar Evento */}
+        <View style={styles.sectionTwo}>
+          <Text style={styles.sectionTitle}>Mapa de eventos e parques proximos</Text>
+          {mapRegion && MapViewComponent && MarkerComponent ? (
+            <MapViewComponent
+              provider={GoogleProvider}
+              style={styles.map}
+              initialRegion={mapRegion}
+              showsUserLocation
+              showsMyLocationButton
+            >
+              {filteredEvents.map((event) => (
+                <MarkerComponent
+                  key={event.event_id}
+                  coordinate={{ latitude: event.latitude, longitude: event.longitude }}
+                  title={event.title}
+                  description={event.location}
+                  pinColor="#E87A4D"
+                />
+              ))}
+
+              {parks.map((park) => (
+                <MarkerComponent
+                  key={park.id}
+                  coordinate={{ latitude: park.latitude, longitude: park.longitude }}
+                  title={park.name}
+                  description="Parque"
+                  pinColor="#57B2A1"
+                />
+              ))}
+            </MapViewComponent>
+          ) : (
+            <View style={styles.mapPreview}>
+              <View style={styles.mapPreviewGlowOne} />
+              <View style={styles.mapPreviewGlowTwo} />
+
+              <View style={styles.mapGrid} />
+
+              {userLocation && (
+                <View style={[styles.previewMarker, styles.previewUserMarker, buildPreviewPoint(userLocation.latitude, userLocation.longitude)]}>
+                  <FontAwesome5 name="map-marker-alt" size={18} color="#2E8B7A" />
+                </View>
+              )}
+
+              {filteredEvents.slice(0, 6).map((event) => (
+                <View
+                  key={event.event_id}
+                  style={[
+                    styles.previewMarker,
+                    styles.previewEventMarker,
+                    buildPreviewPoint(event.latitude, event.longitude),
+                  ]}
+                >
+                  <FontAwesome5 name="paw" size={12} color="#FFFFFF" />
+                </View>
+              ))}
+
+              {parks.slice(0, 6).map((park) => (
+                <View
+                  key={park.id}
+                  style={[
+                    styles.previewMarker,
+                    styles.previewParkMarker,
+                    buildPreviewPoint(park.latitude, park.longitude),
+                  ]}
+                >
+                  <FontAwesome5 name="tree" size={12} color="#FFFFFF" />
+                </View>
+              ))}
+
+              <View style={styles.mapPreviewFooter}>
+                <Text style={styles.mapPreviewTitle}>Pré-visualização do mapa</Text>
+                <Text style={styles.mapPreviewText}>Eventos a laranja, parques a verde e a tua posição ao centro.</Text>
+              </View>
+            </View>
+          )}
+
+          <View style={styles.legendRow}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#E87A4D' }]} />
+              <Text style={styles.legendText}>Eventos</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#57B2A1' }]} />
+              <Text style={styles.legendText}>Parques</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.sectionThree}>
+          <Text style={styles.sectionTitle}>Eventos futuros</Text>
+
+          {error ? (
+            <View style={styles.errorContainer}>
+              <FontAwesome5 name="exclamation-circle" size={20} color="#E87A4D" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : futureEvents.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <FontAwesome5 name="calendar-times" size={24} color="#C7BFB5" />
+              <Text style={styles.emptyText}>Sem eventos futuros com estes filtros.</Text>
+            </View>
+          ) : (
+            <FlatList
+              horizontal
+              data={futureEvents}
+              keyExtractor={(item) => item.event_id}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.cardsList}
+              renderItem={({ item }) => {
+                const distance =
+                  typeof item.distance === 'number'
+                    ? item.distance
+                    : userLocation
+                      ? calculateDistance(
+                          userLocation.latitude,
+                          userLocation.longitude,
+                          item.latitude,
+                          item.longitude,
+                        )
+                      : 0;
+
+                const isJoined = isUserJoined(item.event_id);
+                const isFull =
+                  typeof item.max_attendees === 'number' &&
+                  item.max_attendees > 0 &&
+                  item.attendee_count >= item.max_attendees;
+
+                return (
+                  <View style={styles.eventCard}>
+                    {item.image ? (
+                      <Image source={{ uri: item.image }} style={styles.eventImage} />
+                    ) : (
+                      <View style={styles.eventImageFallback}>
+                        <FontAwesome5 name="paw" size={20} color="#E87A4D" />
+                      </View>
+                    )}
+
+                    <Text style={styles.eventTitle}>{item.title}</Text>
+                    <Text style={styles.eventMeta}>{formatEventDate(item.starts_at)}</Text>
+                    <Text style={styles.eventMeta}>{item.location}</Text>
+                    <Text style={styles.eventMeta}>{distance.toFixed(1)} km</Text>
+
+                    <Text style={styles.attendeesText}>
+                      {item.attendee_count} inscritos
+                      {item.max_attendees ? ` / ${item.max_attendees}` : ''}
+                    </Text>
+
+                    <View style={styles.cardActions}>
+                      <TouchableOpacity
+                        style={[
+                          styles.joinButton,
+                          (isJoined || isFull) && styles.joinButtonDisabled,
+                        ]}
+                        onPress={() => handleJoinEvent(item.event_id)}
+                        disabled={isJoined || isFull}
+                      >
+                        <Text style={styles.joinButtonText}>
+                          {isJoined ? 'Inscrito' : isFull ? 'Cheio' : 'Juntar'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.petsButton}
+                        onPress={() => handleOpenAttendees(item.event_id, item.title)}
+                      >
+                        <Text style={styles.petsButtonText}>Ver pets</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              }}
+            />
+          )}
+        </View>
+      </ScrollView>
+
       <Modal
         visible={showCreateModal}
         animationType="slide"
         transparent={false}
         onRequestClose={() => setShowCreateModal(false)}
       >
-        <KeyboardAvoidingView style={styles.modalContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView
+          style={styles.modalContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-              <FontAwesome5 name="arrow-left" size={24} color="#5C4A3D" />
+              <FontAwesome5 name="arrow-left" size={20} color="#5C4A3D" />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Criar Evento</Text>
-            <View style={{ width: 24 }} />
+            <Text style={styles.modalTitle}>Criar evento</Text>
+            <View style={{ width: 20 }} />
           </View>
 
-          <ScrollView style={styles.modalContent}>
-            <Text style={styles.formLabel}>Título do Evento *</Text>
+          <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 24 }}>
+            <Text style={styles.label}>Titulo*</Text>
             <TextInput
-              style={styles.textInput}
-              placeholder="ex: Passeio de Cães"
+              style={styles.input}
+              placeholder="Ex: Passeio canino de sabado"
               placeholderTextColor="#A9A096"
               value={formData.title}
-              onChangeText={(text) => setFormData({ ...formData, title: text })}
+              onChangeText={(value) => setFormData((prev) => ({ ...prev, title: value }))}
             />
 
-            <Text style={styles.formLabel}>Descrição</Text>
+            <Text style={styles.label}>Descricao</Text>
             <TextInput
-              style={[styles.textInput, { height: 80 }]}
-              placeholder="Descreva o evento..."
-              placeholderTextColor="#A9A096"
+              style={[styles.input, styles.multilineInput]}
               multiline
-              numberOfLines={4}
               value={formData.description}
-              onChangeText={(text) => setFormData({ ...formData, description: text })}
+              onChangeText={(value) => setFormData((prev) => ({ ...prev, description: value }))}
+              placeholder="Conta o que vai acontecer no evento"
+              placeholderTextColor="#A9A096"
             />
 
-            <Text style={styles.formLabel}>Localização *</Text>
+            <Text style={styles.label}>Localizacao*</Text>
             <TextInput
-              style={styles.textInput}
-              placeholder="ex: Parque do Avião"
-              placeholderTextColor="#A9A096"
+              style={styles.input}
               value={formData.location}
-              onChangeText={(text) => setFormData({ ...formData, location: text })}
-            />
-
-            <Text style={styles.formLabel}>Data do Evento *</Text>
-            <TouchableOpacity 
-              style={styles.datePickerButton}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <FontAwesome5 name="calendar-alt" size={18} color="#57B2A1" />
-              <Text style={styles.datePickerText}>{formatDate(formData.date)}</Text>
-            </TouchableOpacity>
-            {showDatePicker && (
-              <DateTimePicker
-                value={formData.date}
-                mode="date"
-                display="default"
-                minimumDate={new Date()}
-                onChange={handleDateChange}
-              />
-            )}
-
-            <Text style={styles.formLabel}>Hora do Evento</Text>
-            <TouchableOpacity 
-              style={styles.datePickerButton}
-              onPress={() => setShowTimePicker(true)}
-            >
-              <FontAwesome5 name="clock" size={18} color="#57B2A1" />
-              <Text style={styles.datePickerText}>{formatTime(formData.time)}</Text>
-            </TouchableOpacity>
-            {showTimePicker && (
-              <DateTimePicker
-                value={formData.time}
-                mode="time"
-                display="default"
-                onChange={handleTimeChange}
-              />
-            )}
-
-            <Text style={styles.formLabel}>Máximo de Participantes</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="ex: 20"
+              onChangeText={(value) => setFormData((prev) => ({ ...prev, location: value }))}
+              placeholder="Ex: Parque do Aviao"
               placeholderTextColor="#A9A096"
-              keyboardType="numeric"
-              value={formData.maxAttendees}
-              onChangeText={(text) => setFormData({ ...formData, maxAttendees: text })}
             />
 
-            <TouchableOpacity
-              style={styles.btnCreateSubmit}
-              onPress={handleCreateEvent}
-              disabled={creatingEvent}
-            >
+            <Text style={styles.label}>Data e hora de inicio*</Text>
+            <View style={styles.datetimeRow}>
+              <TouchableOpacity style={styles.datetimeButton} onPress={() => setShowStartDatePicker(true)}>
+                <FontAwesome5 name="calendar-alt" size={14} color="#57B2A1" />
+                <Text style={styles.datetimeText}>{formData.startsDate.toLocaleDateString('pt-PT')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.datetimeButton} onPress={() => setShowStartTimePicker(true)}>
+                <FontAwesome5 name="clock" size={14} color="#57B2A1" />
+                <Text style={styles.datetimeText}>
+                  {formData.startsTime.toLocaleTimeString('pt-PT', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inlineActionRow}>
+              <Text style={styles.labelInline}>Adicionar fim do evento</Text>
+              <TouchableOpacity
+                style={[styles.toggleButton, formData.hasEndAt && styles.toggleButtonActive]}
+                onPress={() => setFormData((prev) => ({ ...prev, hasEndAt: !prev.hasEndAt }))}
+              >
+                <Text style={[styles.toggleButtonText, formData.hasEndAt && styles.toggleButtonTextActive]}>
+                  {formData.hasEndAt ? 'Sim' : 'Nao'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {formData.hasEndAt && (
+              <View>
+                <Text style={styles.label}>Data e hora de fim</Text>
+                <View style={styles.datetimeRow}>
+                  <TouchableOpacity style={styles.datetimeButton} onPress={() => setShowEndDatePicker(true)}>
+                    <FontAwesome5 name="calendar-alt" size={14} color="#57B2A1" />
+                    <Text style={styles.datetimeText}>{formData.endsDate.toLocaleDateString('pt-PT')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.datetimeButton} onPress={() => setShowEndTimePicker(true)}>
+                    <FontAwesome5 name="clock" size={14} color="#57B2A1" />
+                    <Text style={styles.datetimeText}>
+                      {formData.endsTime.toLocaleTimeString('pt-PT', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            <Text style={styles.label}>Maximo de participantes</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="number-pad"
+              value={formData.maxAttendees}
+              onChangeText={(value) => setFormData((prev) => ({ ...prev, maxAttendees: value }))}
+              placeholder="Ex: 20"
+              placeholderTextColor="#A9A096"
+            />
+
+            <TouchableOpacity style={styles.submitButton} onPress={handleCreateEvent} disabled={creatingEvent}>
               {creatingEvent ? (
                 <ActivityIndicator size="small" color="white" />
               ) : (
-                <Text style={styles.btnCreateSubmitText}>Criar Evento</Text>
+                <Text style={styles.submitButtonText}>Criar evento</Text>
               )}
             </TouchableOpacity>
+
+            {showStartDatePicker && (
+              <DateTimePicker
+                value={formData.startsDate}
+                mode="date"
+                minimumDate={new Date()}
+                onChange={(event, selectedDate) =>
+                  onDateChange(event, selectedDate, 'startsDate', () => setShowStartDatePicker(false))
+                }
+              />
+            )}
+
+            {showStartTimePicker && (
+              <DateTimePicker
+                value={formData.startsTime}
+                mode="time"
+                onChange={(event, selectedDate) =>
+                  onTimeChange(event, selectedDate, 'startsTime', () => setShowStartTimePicker(false))
+                }
+              />
+            )}
+
+            {showEndDatePicker && (
+              <DateTimePicker
+                value={formData.endsDate}
+                mode="date"
+                minimumDate={formData.startsDate}
+                onChange={(event, selectedDate) =>
+                  onDateChange(event, selectedDate, 'endsDate', () => setShowEndDatePicker(false))
+                }
+              />
+            )}
+
+            {showEndTimePicker && (
+              <DateTimePicker
+                value={formData.endsTime}
+                mode="time"
+                onChange={(event, selectedDate) =>
+                  onTimeChange(event, selectedDate, 'endsTime', () => setShowEndTimePicker(false))
+                }
+              />
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showAttendeesModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowAttendeesModal(false)}
+      >
+        <View style={styles.attendeesOverlay}>
+          <View style={styles.attendeesCard}>
+            <View style={styles.attendeesHeader}>
+              <Text style={styles.attendeesTitle}>Pets no evento</Text>
+              <TouchableOpacity onPress={() => setShowAttendeesModal(false)}>
+                <FontAwesome5 name="times" size={18} color="#8B837A" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.attendeesSubtitle}>{selectedEventTitle}</Text>
+
+            {attendeesLoading ? (
+              <View style={styles.attendeesLoading}>
+                <ActivityIndicator size="small" color="#57B2A1" />
+                <Text style={styles.attendeesLoadingText}>A carregar lista...</Text>
+              </View>
+            ) : eventAttendees.length === 0 ? (
+              <View style={styles.attendeesEmpty}>
+                <Text style={styles.attendeesEmptyText}>Ainda sem participantes.</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={eventAttendees}
+                keyExtractor={(item) => `${item.event_id}-${item.user_id}`}
+                renderItem={({ item }) => (
+                  <View style={styles.attendeeRow}>
+                    {item.pet?.main_photo ? (
+                      <Image source={{ uri: item.pet.main_photo }} style={styles.attendeeAvatar} />
+                    ) : (
+                      <View style={styles.attendeeAvatarFallback}>
+                        <FontAwesome5 name="paw" size={12} color="#E87A4D" />
+                      </View>
+                    )}
+
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.attendeePetName}>{item.pet?.name || 'Tutor sem pet associado'}</Text>
+                      <Text style={styles.attendeeOwnerName}>{item.user?.username || 'Participante'}</Text>
+                    </View>
+                  </View>
+                )}
+              />
+            )}
+          </View>
+        </View>
       </Modal>
 
       <BottomNav activePage="groups" />
@@ -516,284 +1060,553 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F2EB',
   },
-  header: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 15,
-    paddingHorizontal: 20,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#EAE6DF',
+  scroll: {
+    flex: 1,
   },
-  headerTop: {
+  scrollContent: {
+    paddingTop: Platform.OS === 'ios' ? 54 : 24,
+    paddingBottom: 130,
+  },
+  sectionOne: {
+    backgroundColor: 'white',
+    marginHorizontal: 14,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+  },
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 12,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  screenTitle: {
+    fontSize: 24,
+    fontWeight: '800',
     color: '#5C4A3D',
-    flex: 1,
-    textAlign: 'center',
   },
-  btnCreateEvent: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  createButton: {
     backgroundColor: '#E87A4D',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchWrapper: {
-    margin: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
-    borderRadius: 20,
-    paddingHorizontal: 15,
+    gap: 6,
+  },
+  createButtonText: {
+    color: 'white',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  searchWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F2EB',
+    borderRadius: 12,
+    paddingHorizontal: 12,
     paddingVertical: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 2,
+    marginBottom: 10,
   },
   searchIcon: {
-    marginRight: 10,
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
     color: '#5C4A3D',
     fontSize: 14,
   },
-  filterRow: {
-    marginHorizontal: 15,
-    marginBottom: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
+  filterTitle: {
+    fontSize: 12,
+    color: '#8B837A',
+    fontWeight: '700',
+    marginBottom: 8,
   },
-  filterLabel: {
-    color: '#5C4A3D',
-    fontWeight: 'bold',
-    marginRight: 10,
+  chipsRow: {
+    paddingBottom: 12,
+    gap: 8,
   },
-  radiusScroll: {
-    flex: 1,
-  },
-  radiusBtn: {
-    marginRight: 10,
+  chip: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-    backgroundColor: 'white',
+    paddingVertical: 7,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: '#D6CEC3',
+    backgroundColor: '#FFFFFF',
   },
-  radiusBtnActive: {
+  chipActive: {
     backgroundColor: '#57B2A1',
     borderColor: '#57B2A1',
   },
-  radiusBtnText: {
+  chipText: {
     color: '#5C4A3D',
-    fontWeight: '600',
+    fontWeight: '700',
     fontSize: 12,
   },
-  radiusBtnTextActive: {
+  chipTextActive: {
     color: 'white',
   },
-  eventsList: {
-    paddingHorizontal: 15,
-    paddingBottom: 20,
-  },
-  eventCard: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 15,
+  statusRow: {
     flexDirection: 'row',
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    gap: 8,
   },
-  eventImg: {
-    width: 80,
-    height: 80,
+  statusButton: {
+    flex: 1,
     borderRadius: 10,
-  },
-  eventImgPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 10,
-    backgroundColor: '#E8DCCF',
-    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D6CEC3',
+    paddingVertical: 8,
     alignItems: 'center',
   },
-  eventInfo: {
-    flex: 1,
-    justifyContent: 'space-between',
+  statusButtonActive: {
+    borderColor: '#E87A4D',
+    backgroundColor: '#FFF2EC',
   },
-  eventTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#5C4A3D',
-    marginBottom: 4,
-  },
-  eventDescription: {
+  statusButtonText: {
     fontSize: 12,
-    color: '#888',
-    marginBottom: 4,
+    fontWeight: '700',
+    color: '#8B837A',
   },
-  eventRow: {
+  statusButtonTextActive: {
+    color: '#E87A4D',
+  },
+  sectionTwo: {
+    backgroundColor: 'white',
+    marginHorizontal: 14,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+  },
+  sectionThree: {
+    marginHorizontal: 14,
+  },
+  sectionTitle: {
+    color: '#5C4A3D',
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 10,
+  },
+  map: {
+    width: '100%',
+    height: 260,
+    borderRadius: 14,
+  },
+  mapPlaceholder: {
+    height: 220,
+    borderRadius: 14,
+    backgroundColor: '#EFEAE2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  mapPreview: {
+    height: 260,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#DDE9E0',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: '#C7D8CB',
+  },
+  mapPreviewGlowOne: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    top: -40,
+    left: -30,
+  },
+  mapPreviewGlowTwo: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    bottom: -20,
+    right: -40,
+  },
+  mapGrid: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderColor: 'transparent',
+    opacity: 0.25,
+    borderRadius: 14,
+    borderStyle: 'dashed',
+  },
+  previewMarker: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -14,
+    marginTop: -14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  previewUserMarker: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderWidth: 2,
+    borderColor: '#2E8B7A',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  previewEventMarker: {
+    backgroundColor: '#E87A4D',
+  },
+  previewParkMarker: {
+    backgroundColor: '#57B2A1',
+  },
+  mapPreviewFooter: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 12,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  mapPreviewTitle: {
+    color: '#5C4A3D',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  mapPreviewText: {
+    color: '#6D665E',
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  mapPlaceholderText: {
+    color: '#8B837A',
+    fontWeight: '600',
+  },
+  legendRow: {
+    flexDirection: 'row',
+    marginTop: 10,
+    gap: 16,
+  },
+  legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 2,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendText: {
+    color: '#8B837A',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  cardsList: {
+    paddingBottom: 10,
+    gap: 12,
+  },
+  eventCard: {
+    width: 252,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  eventImage: {
+    width: '100%',
+    height: 110,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  eventImageFallback: {
+    width: '100%',
+    height: 110,
+    borderRadius: 12,
+    marginBottom: 10,
+    backgroundColor: '#E8DCCF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventTitle: {
+    color: '#5C4A3D',
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 4,
   },
   eventMeta: {
-    fontSize: 11,
-    color: '#888',
+    color: '#8B837A',
+    fontSize: 12,
+    marginBottom: 2,
   },
-  eventBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  attendeesText: {
     marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#EAE6DF',
+    color: '#5C4A3D',
+    fontSize: 12,
+    fontWeight: '700',
   },
-  attendeeCount: {
-    fontSize: 11,
-    color: '#888',
-    fontWeight: '600',
+  cardActions: {
+    marginTop: 10,
+    flexDirection: 'row',
+    gap: 8,
   },
-  btnSubscribe: {
+  joinButton: {
+    flex: 1,
     backgroundColor: '#E87A4D',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 10,
+    paddingVertical: 9,
+    alignItems: 'center',
   },
-  btnSubscribed: {
-    backgroundColor: '#57B2A1',
+  joinButtonDisabled: {
+    backgroundColor: '#BDB4A9',
   },
-  btnSubscribeText: {
+  joinButtonText: {
     color: 'white',
-    fontSize: 11,
-    fontWeight: 'bold',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  petsButton: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#57B2A1',
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  petsButtonText: {
+    color: '#57B2A1',
+    fontSize: 12,
+    fontWeight: '700',
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    gap: 15,
+    justifyContent: 'center',
+    gap: 12,
   },
   loadingText: {
     color: '#5C4A3D',
-    fontSize: 16,
+    fontWeight: '700',
   },
   errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 15,
-    paddingHorizontal: 30,
+    gap: 8,
+    backgroundColor: '#FFF3EE',
+    borderRadius: 12,
+    padding: 10,
   },
   errorText: {
+    flex: 1,
     color: '#E87A4D',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  retryBtn: {
-    backgroundColor: '#E87A4D',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  retryBtnText: {
-    color: 'white',
-    fontWeight: 'bold',
+    fontWeight: '600',
+    fontSize: 12,
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
+    backgroundColor: '#EFEAE2',
+    borderRadius: 12,
+    padding: 20,
     alignItems: 'center',
-    gap: 15,
+    gap: 10,
   },
   emptyText: {
-    color: '#888',
-    fontSize: 16,
+    color: '#8B837A',
+    fontWeight: '700',
   },
   modalContainer: {
     flex: 1,
     backgroundColor: '#F5F2EB',
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingTop: Platform.OS === 'ios' ? 56 : 24,
   },
   modalHeader: {
+    backgroundColor: 'white',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EAE6DF',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#EAE6DF',
   },
   modalTitle: {
+    color: '#5C4A3D',
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#5C4A3D',
+    fontWeight: '800',
   },
-  modalContent: {
-    padding: 20,
+  modalBody: {
+    padding: 16,
   },
-  formLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+  label: {
     color: '#5C4A3D',
-    marginTop: 15,
+    fontSize: 13,
+    fontWeight: '700',
     marginBottom: 8,
+    marginTop: 10,
   },
-  textInput: {
+  input: {
     backgroundColor: 'white',
-    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D6CEC3',
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: '#5C4A3D',
-    fontSize: 14,
+  },
+  multilineInput: {
+    minHeight: 88,
+    textAlignVertical: 'top',
+  },
+  datetimeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  datetimeButton: {
+    flex: 1,
+    backgroundColor: 'white',
     borderWidth: 1,
     borderColor: '#D6CEC3',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
   },
-  btnCreateSubmit: {
+  datetimeText: {
+    color: '#5C4A3D',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  inlineActionRow: {
+    marginTop: 14,
+    marginBottom: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  labelInline: {
+    color: '#5C4A3D',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  toggleButton: {
+    borderWidth: 1,
+    borderColor: '#D6CEC3',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  toggleButtonActive: {
+    borderColor: '#57B2A1',
+    backgroundColor: '#EAF7F3',
+  },
+  toggleButtonText: {
+    color: '#8B837A',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  toggleButtonTextActive: {
+    color: '#57B2A1',
+  },
+  submitButton: {
+    marginTop: 24,
     backgroundColor: '#E87A4D',
     borderRadius: 12,
-    paddingVertical: 15,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 30,
   },
-  btnCreateSubmitText: {
+  submitButtonText: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '800',
+    fontSize: 15,
   },
-  datePickerButton: {
+  attendeesOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  attendeesCard: {
+    maxHeight: '72%',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 14,
+  },
+  attendeesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  attendeesTitle: {
+    color: '#5C4A3D',
+    fontWeight: '800',
+    fontSize: 18,
+  },
+  attendeesSubtitle: {
+    color: '#8B837A',
+    fontWeight: '600',
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  attendeesLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 22,
+  },
+  attendeesLoadingText: {
+    color: '#8B837A',
+    fontWeight: '600',
+  },
+  attendeesEmpty: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  attendeesEmptyText: {
+    color: '#8B837A',
+    fontWeight: '700',
+  },
+  attendeeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#D6CEC3',
-    marginBottom: 15,
     gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0ECE5',
   },
-  datePickerText: {
-    fontSize: 14,
+  attendeeAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  attendeeAvatarFallback: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F5F2EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attendeePetName: {
     color: '#5C4A3D',
-    fontWeight: '500',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  attendeeOwnerName: {
+    color: '#8B837A',
+    fontSize: 12,
+    marginTop: 1,
   },
 });
