@@ -257,6 +257,7 @@ export default function Chat() {
 
   const matchesCount = conversations.filter((chat) => chat.category === 'matches').length;
   const adoptionsCount = conversations.filter((chat) => chat.category === 'adoptions').length;
+  const showAdoptionsTab = activeProfile?.type === 'tutor';
 
   const filteredConversations = conversations
     .filter((chat) => chat.category === selectedTab)
@@ -294,15 +295,17 @@ export default function Chat() {
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.tabButton, selectedTab === 'adoptions' && styles.tabButtonActive]}
-          onPress={() => setSelectedTab('adoptions')}
-        >
-          <Text style={[styles.tabText, selectedTab === 'adoptions' && styles.tabTextActive]}>Adoções</Text>
-          <View style={[styles.tabCount, selectedTab === 'adoptions' && styles.tabCountActive]}>
-            <Text style={[styles.tabCountText, selectedTab === 'adoptions' && styles.tabCountTextActive]}>{adoptionsCount}</Text>
-          </View>
-        </TouchableOpacity>
+        {showAdoptionsTab && (
+          <TouchableOpacity
+            style={[styles.tabButton, selectedTab === 'adoptions' && styles.tabButtonActive]}
+            onPress={() => setSelectedTab('adoptions')}
+          >
+            <Text style={[styles.tabText, selectedTab === 'adoptions' && styles.tabTextActive]}>Adoções</Text>
+            <View style={[styles.tabCount, selectedTab === 'adoptions' && styles.tabCountActive]}>
+              <Text style={[styles.tabCountText, selectedTab === 'adoptions' && styles.tabCountTextActive]}>{adoptionsCount}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.searchContainer}>
