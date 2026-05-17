@@ -13,12 +13,10 @@ interface BottomNavProps {
 export default function BottomNav({ activePage }: BottomNavProps) {
   const router = useRouter();
   const { activeProfile } = useActiveProfile();
-  
-  // 2. O estado que controla se o popup está aberto ou fechado
   const [showPopup, setShowPopup] = useState(false);
-  
-  // Mostrar matches apenas se o utilizador tem um pet ativo (não é tutor)
-  const isPetUser = activeProfile?.type !== 'tutor';
+
+  const isTutor = activeProfile?.type === 'tutor';
+  const isPetUser = !isTutor;
 
   const navigateTo = (route: string) => {
     router.replace(route as any);
@@ -38,10 +36,12 @@ export default function BottomNav({ activePage }: BottomNavProps) {
           <Text style={[styles.navText, activePage === 'home' && styles.activeText]}>Home</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.navItem} onPress={() => navigateTo('/grupos')}>
-          <FontAwesome5 name="users" size={24} color={activePage === 'groups' ? '#5C4A3D' : '#B0A8A0'} />
-          <Text style={[styles.navText, activePage === 'groups' && styles.activeText]}>Eventos</Text>
-        </TouchableOpacity>
+        {isTutor && (
+          <TouchableOpacity style={styles.navItem} onPress={() => navigateTo('/grupos')}>
+            <FontAwesome5 name="users" size={24} color={activePage === 'groups' ? '#5C4A3D' : '#B0A8A0'} />
+            <Text style={[styles.navText, activePage === 'groups' && styles.activeText]}>Eventos</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity style={styles.navItem} onPress={() => navigateTo('/chat')}>
           <FontAwesome5 name="comments" size={24} color={activePage === 'chat' ? '#5C4A3D' : '#B0A8A0'} solid={activePage === 'chat'} />
@@ -62,14 +62,10 @@ export default function BottomNav({ activePage }: BottomNavProps) {
           </TouchableOpacity>
         )}
 
-        {/* 3. BOTÃO PERFIL ATUALIZADO */}
         <TouchableOpacity 
           style={styles.navItem} 
-          // O onPress normal (um clique rápido) vai para a página do Dashboard
           onPress={() => navigateTo('/dashboard')}
-      // O onLongPress (segurar o dedo por 500ms) vai abrir o popup de seleção de pets
           onLongPress={() => setShowPopup(true)}
-         // O delayLongPress define quanto tempo o utilizador tem de segurar para ativar o onLongPress
           delayLongPress={500} 
         >
           <FontAwesome5 

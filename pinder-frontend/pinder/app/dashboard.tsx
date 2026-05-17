@@ -77,7 +77,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
     const fetchProfile = async () => {
 
       if (!activeProfile?.id) {
-        console.log("❌ activeProfile.id é null/undefined, não fazendo fetch");
         setIsLoading(false);
         setProfileData(null);
         return;
@@ -111,23 +110,17 @@ const onDateChange = (event: any, selectedDate?: Date) => {
           
           const userIdToFetch = activeProfile.id === correctUserId ? activeProfile.id : correctUserId;
           
-          console.log(`🧑 Buscando perfil tutor: activeProfile.id=${activeProfile.id}, correctUserId=${correctUserId}, useFetch=${userIdToFetch}`);
-          
           const response = await fetch(`${API_URL}/users/${userIdToFetch}`);
           if (response.ok) {
             const data = await response.json();
-            console.log(`✅ Perfil tutor carregado:`, data.username);
             setProfileData({ ...data, name: data.username });
           } else {
-            console.warn(`⚠️ Erro ao buscar /users/${userIdToFetch}`);
             setProfileData({ ...userFromStorage, name: userFromStorage.username }); 
           }
         } else if (activeProfile.type === 'pet' && activeProfile.id) {
-          console.log(`🐾 Buscando perfil pet: /pets/${activeProfile.id}`);
           const response = await fetch(`${API_URL}/pets/${activeProfile.id}`);
           if (response.ok) {
             const data = await response.json();
-            console.log(`✅ Perfil pet carregado:`, data.name);
             setProfileData(data);
             setSpeciesId(data.species_id || '');
             setBreedId(data.breed_id || '');
@@ -275,7 +268,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
       }
     } catch (error) {
       setSaveMessage('Erro de ligação ao servidor.');
-      console.log("Erro ao salvar perfil:", error);
     } finally {
       setIsSaving(false);
     }
@@ -300,7 +292,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
       }
     } catch (error) {
       setSaveMessage('Erro de ligação ao servidor.');
-      console.log("Erro ao apagar pet:", error);
     } finally {
       setIsSaving(false);
     }

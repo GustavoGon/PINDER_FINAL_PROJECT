@@ -54,6 +54,10 @@ export default function FeedSwipe() {
       setIsLoading(true);
       setPets([]); // Limpar pets anteriores
       setCurrentIndex(0);
+      console.info('[Recommendations] A carregar feed', {
+        mode: activeProfile.type,
+        profileId: activeProfile.id,
+      });
       
       try {
         const userStr = await AsyncStorage.getItem('user');
@@ -62,7 +66,7 @@ export default function FeedSwipe() {
 
         // 🔍 Se é PET: Usar recomendações do pet específico
         if (activeProfile.type === 'pet') {
-          console.log(`🐾 Modo PET: Carregando recomendações para ${activeProfile.id}`);
+          console.info('[Recommendations] Pedido para pet', { petId: activeProfile.id });
           
           const recommendationsResponse = await fetch(
             `${API_URL}/recommendations?pet_id=${activeProfile.id}&mode=normal`
@@ -70,6 +74,10 @@ export default function FeedSwipe() {
           
           if (recommendationsResponse.ok) {
             const feedPets = await recommendationsResponse.json();
+            console.info('[Recommendations] Resposta recebida', {
+              mode: 'normal',
+              count: feedPets.length,
+            });
             setPets(feedPets);
             setMyPetId(activeProfile.id);
           } else {
@@ -78,7 +86,7 @@ export default function FeedSwipe() {
         } 
         // 👤 Se é TUTOR: Mostrar pets para adoção próximos
         else if (activeProfile.type === 'tutor') {
-          console.log(`👤 Modo TUTOR: Carregando recomendações de adoção`);
+          console.info('[Recommendations] Pedido para tutor', { userId: myUserId });
           
           const adoptionResponse = await fetch(
             `${API_URL}/recommendations?user_id=${myUserId}&mode=adoption`
@@ -86,6 +94,10 @@ export default function FeedSwipe() {
           
           if (adoptionResponse.ok) {
             const adoptionPets = await adoptionResponse.json();
+            console.info('[Recommendations] Resposta recebida', {
+              mode: 'adoption',
+              count: adoptionPets.length,
+            });
             setPets(adoptionPets);
           } else {
             console.error("Erro do servidor:", await adoptionResponse.text());
@@ -95,6 +107,7 @@ export default function FeedSwipe() {
         console.error("Erro de Rede (Verifica o teu IP!):", error);
       } finally {
         setIsLoading(false);
+        console.info('[Recommendations] Feed pronto');
       }
     };
 
@@ -112,9 +125,7 @@ export default function FeedSwipe() {
     return age === 1 ? "1 ano" : `${age} anos`;
   };
 
-  // --- 2. NOTA: Paginação removida ---
-  // O endpoint de recomendações retorna todos os pets ordenados por relevância,
-  // sem necessidade de paginação incremental.
+
 
   // --- MOTOR DE SWIPE ---
   const panResponder = useRef(

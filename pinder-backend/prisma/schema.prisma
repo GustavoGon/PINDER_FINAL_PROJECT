@@ -316,6 +316,7 @@ model Event {
 }
 
 model EventAttendee {
+  event_attendee_id String  @id @default(uuid())
   event_id String
   user_id  String
   pet_id   String?
@@ -328,7 +329,7 @@ model EventAttendee {
 
   pet Pet? @relation(fields: [pet_id], references: [pet_id])
 
-  @@id([event_id, user_id])
+  @@unique([event_id, user_id, pet_id])
 
   @@map("event_attendees")
 }

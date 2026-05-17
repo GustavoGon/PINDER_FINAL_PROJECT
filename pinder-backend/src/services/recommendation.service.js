@@ -5,6 +5,12 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
   let userPrefs = [];
   let baseLocation = null;
 
+  console.info('[Recommendations] Início do scoring', {
+    mode,
+    hasPetId: Boolean(pet_id),
+    hasUserId: Boolean(user_id),
+  });
+
   // 🐾 NORMAL MODE → use pet
   if (mode === "normal") {
     if (!pet_id) throw new Error("pet_id is required");
@@ -20,6 +26,11 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     if (!userPet) throw new Error("Pet not found");
 
     baseLocation = userPet.owner;
+    console.info('[Recommendations] Pet base carregado', {
+      petId: pet_id,
+      hasOwnerLocation: Boolean(baseLocation?.latitude && baseLocation?.longitude),
+      hasOwnerDistrict: Boolean(baseLocation?.location),
+    });
   }
 
   // 🏠 ADOPTION MODE → use user
@@ -36,6 +47,13 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
 
     userPrefs = await prisma.userPreference.findMany({
       where: { user_id },
+    });
+
+    console.info('[Recommendations] Tutor base carregado', {
+      userId: user_id,
+      hasOwnerLocation: Boolean(baseLocation?.latitude && baseLocation?.longitude),
+      hasOwnerDistrict: Boolean(baseLocation?.location),
+      preferenceCount: userPrefs.length,
     });
   }
 
@@ -107,6 +125,13 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
   if (filtered.length === 0) {
     filtered = filterCandidates(candidates, false);
   }
+
+  console.info('[Recommendations] Fase de filtragem concluída', {
+    mode,
+    candidates: candidates.length,
+    filtered: filtered.length,
+    usedRelaxedLocationFilter: filtered.length > 0 && candidates.length > 0 && filtered.length === candidates.length,
+  });
 
   // 📍 Distance
   function getDistance(lat1, lon1, lat2, lon2) {
@@ -212,6 +237,13 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
   const distant = scored
     .filter((p) => p.distance > 100)
     .sort((a, b) => b.score - a.score);
+
+  console.info('[Recommendations] Ranking final preparado', {
+    mode,
+    nearby: nearby.length,
+    distant: distant.length,
+    total: nearby.length + distant.length,
+  });
 
   return [...nearby, ...distant];
 }

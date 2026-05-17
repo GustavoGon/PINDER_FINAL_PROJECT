@@ -87,11 +87,20 @@ exports.joinEvent = async (req, res) => {
     const { id } = req.params;
     const { user_id, pet_id } = req.body;
 
+    console.info('[Events] Pedido para inscrever pet', { eventId: id, userId: user_id, petId: pet_id });
+
+    if (!pet_id) {
+      return res.status(400).json({
+        error: "pet_id is required",
+      });
+    }
+
     const existing = await prisma.eventAttendee.findUnique({
       where: {
-        event_id_user_id: {
+        event_id_user_id_pet_id: {
           event_id: id,
           user_id,
+          pet_id,
         },
       },
     });
@@ -137,6 +146,8 @@ exports.joinEvent = async (req, res) => {
       },
     });
 
+    console.info('[Events] Pet inscrito com sucesso', { eventId: id, userId: user_id, petId: pet_id });
+
     res.status(201).json({
       message: "Joined event successfully",
     });
@@ -150,13 +161,22 @@ exports.joinEvent = async (req, res) => {
 exports.leaveEvent = async (req, res) => {
   try {
     const { id } = req.params;
-    const { user_id } = req.body;
+    const { user_id, pet_id } = req.body;
+
+    console.info('[Events] Pedido para remover inscrição de pet', { eventId: id, userId: user_id, petId: pet_id });
+
+    if (!pet_id) {
+      return res.status(400).json({
+        error: "pet_id is required",
+      });
+    }
 
     await prisma.eventAttendee.delete({
       where: {
-        event_id_user_id: {
+        event_id_user_id_pet_id: {
           event_id: id,
           user_id,
+          pet_id,
         },
       },
     });
@@ -171,6 +191,8 @@ exports.leaveEvent = async (req, res) => {
         },
       },
     });
+
+    console.info('[Events] Inscrição de pet removida', { eventId: id, userId: user_id, petId: pet_id });
 
     res.json({
       message: "Left event successfully",

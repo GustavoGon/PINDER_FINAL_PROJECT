@@ -29,6 +29,8 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 type EventStatus = 'UPCOMING' | 'ONGOING' | 'FINISHED' | 'CANCELLED';
 type StatusFilter = 'ALL' | 'UPCOMING' | 'ONGOING';
 
+type PetFilter = 'ALL' | string;
+
 interface EventAttendee {
   event_id: string;
   user_id: string;
@@ -53,6 +55,14 @@ interface EventItem {
   status?: EventStatus;
   distance?: number;
   attendees?: EventAttendee[];
+}
+
+interface PetItem {
+  pet_id: string;
+  name: string;
+  main_photo: string | null;
+  species?: { name?: string | null } | null;
+  breed?: { name?: string | null } | null;
 }
 
 interface ParkSpot {
@@ -97,22 +107,27 @@ if (hasNativeMapsModule) {
 
 export default function GruposEventos() {
   const { activeProfile } = useActiveProfile();
+  const isTutor = activeProfile?.type === 'tutor';
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [parks, setParks] = useState<ParkSpot[]>([]);
+  const [pets, setPets] = useState<PetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [petsLoading, setPetsLoading] = useState(false);
+  const [petsError, setPetsError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [radius, setRadius] = useState(10);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [petSearchTerm, setPetSearchTerm] = useState('');
+  const [petFilter, setPetFilter] = useState<PetFilter>('ALL');
 
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [joinedEventIds, setJoinedEventIds] = useState<Set<string>>(new Set());
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creatingEvent, setCreatingEvent] = useState(false);
@@ -125,6 +140,11 @@ export default function GruposEventos() {
   const [attendeesLoading, setAttendeesLoading] = useState(false);
   const [selectedEventTitle, setSelectedEventTitle] = useState('');
   const [eventAttendees, setEventAttendees] = useState<EventAttendee[]>([]);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [selectedEventForJoin, setSelectedEventForJoin] = useState<EventItem | null>(null);
+  const [joinModalLoading, setJoinModalLoading] = useState(false);
+  const [joiningPetId, setJoiningPetId] = useState<string | null>(null);
+  const [joinedPetIds, setJoinedPetIds] = useState<Set<string>>(new Set());
 
   const [formData, setFormData] = useState({
     title: '',
@@ -152,6 +172,36 @@ export default function GruposEventos() {
 
     loadCurrentUser();
   }, []);
+
+  const loadPets = useCallback(async () => {
+    if (!currentUserId) {
+      return;
+    }
+
+    try {
+      setPetsLoading(true);
+      setPetsError(null);
+
+      const response = await fetch(`${API_URL}/pets/user/${currentUserId}`);
+
+      if (!response.ok) {
+        throw new Error('Nao foi possivel carregar os teus pets');
+      }
+
+      const petsData: PetItem[] = await response.json();
+      setPets(petsData);
+    } catch (petsFetchError) {
+      const message = petsFetchError instanceof Error ? petsFetchError.message : 'Erro ao carregar pets';
+      setPetsError(message);
+      setPets([]);
+    } finally {
+      setPetsLoading(false);
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    void loadPets();
+  }, [loadPets]);
 
   useEffect(() => {
     const getLocation = async () => {
@@ -209,7 +259,7 @@ export default function GruposEventos() {
     return R * c;
   };
 
-  const buildPreviewPoint = (latitude: number, longitude: number) => {
+  const buildPreviewPoint = (latitude: number, longitude: number): { left: `${number}%`; top: `${number}%` } => {
     if (!mapRegion) {
       return { left: '50%', top: '50%' };
     }
@@ -265,16 +315,6 @@ export default function GruposEventos() {
         .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
 
       setEvents(enriched);
-
-      if (currentUserId) {
-        const joined = new Set<string>();
-        enriched.forEach((event) => {
-          if (event.attendees?.some((attendee) => attendee.user_id === currentUserId)) {
-            joined.add(event.event_id);
-          }
-        });
-        setJoinedEventIds(joined);
-      }
     } catch (fetchError) {
       const message = fetchError instanceof Error ? fetchError.message : 'Erro ao procurar eventos';
       setError(message);
@@ -383,7 +423,124 @@ export default function GruposEventos() {
       .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
   }, [filteredEvents]);
 
-  const isUserJoined = (eventId: string) => joinedEventIds.has(eventId);
+  const availablePetFilters = useMemo(() => {
+    const uniqueSpecies = Array.from(
+      new Set(
+        pets
+          .map((pet) => pet.species?.name?.trim())
+          .filter((speciesName): speciesName is string => Boolean(speciesName)),
+      ),
+    ).sort((left, right) => left.localeCompare(right, 'pt-PT'));
+
+    return ['ALL', ...uniqueSpecies] as const;
+  }, [pets]);
+
+  const filteredPets = useMemo(() => {
+    const normalizedSearch = petSearchTerm.trim().toLowerCase();
+
+    return pets
+      .filter((pet) => {
+        const textToSearch = [pet.name, pet.species?.name, pet.breed?.name]
+          .filter((value): value is string => Boolean(value))
+          .join(' ')
+          .toLowerCase();
+
+        const matchesSearch = !normalizedSearch || textToSearch.includes(normalizedSearch);
+        const matchesFilter = petFilter === 'ALL' || pet.species?.name === petFilter;
+
+        return matchesSearch && matchesFilter;
+      })
+      .sort((left, right) => left.name.localeCompare(right.name, 'pt-PT'));
+  }, [pets, petFilter, petSearchTerm]);
+
+  const selectedEventIsFull =
+    typeof selectedEventForJoin?.max_attendees === 'number' &&
+    selectedEventForJoin.max_attendees > 0 &&
+    selectedEventForJoin.attendee_count >= selectedEventForJoin.max_attendees;
+
+  const refreshSelectedEvent = useCallback(async (eventId: string) => {
+    const response = await fetch(`${API_URL}/events/${eventId}`);
+
+    if (!response.ok) {
+      throw new Error('Nao foi possivel carregar o evento');
+    }
+
+    const eventDetail: EventItem = await response.json();
+    setSelectedEventForJoin(eventDetail);
+    setJoinedPetIds(
+      new Set(
+        eventDetail.attendees
+          ?.map((attendee) => attendee.pet_id)
+          .filter((petId): petId is string => Boolean(petId)) ?? [],
+      ),
+    );
+  }, []);
+
+  const handleOpenJoinModal = async (eventItem: EventItem) => {
+    if (!currentUserId) {
+      Alert.alert('Sessao', 'Faz login para te inscreveres num evento.');
+      return;
+    }
+
+    setSelectedEventForJoin(eventItem);
+    setJoinedPetIds(
+      new Set(
+        eventItem.attendees
+          ?.map((attendee) => attendee.pet_id)
+          .filter((petId): petId is string => Boolean(petId)) ?? [],
+      ),
+    );
+    setPetSearchTerm('');
+    setPetFilter('ALL');
+    setShowJoinModal(true);
+    setJoinModalLoading(true);
+
+    try {
+      await refreshSelectedEvent(eventItem.event_id);
+    } catch (joinModalError) {
+      const message = joinModalError instanceof Error ? joinModalError.message : 'Erro ao abrir o modal';
+      Alert.alert('Erro', message);
+    } finally {
+      setJoinModalLoading(false);
+    }
+  };
+
+  const handleJoinPet = async (pet: PetItem) => {
+    if (!selectedEventForJoin || !currentUserId) {
+      return;
+    }
+
+    if (joinedPetIds.has(pet.pet_id)) {
+      return;
+    }
+
+    try {
+      setJoiningPetId(pet.pet_id);
+
+      const response = await fetch(`${API_URL}/events/${selectedEventForJoin.event_id}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUserId,
+          pet_id: pet.pet_id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Nao foi possivel inscrever o pet');
+      }
+
+      setJoinedPetIds((prev) => new Set([...prev, pet.pet_id]));
+      await Promise.all([fetchEvents(false), refreshSelectedEvent(selectedEventForJoin.event_id)]);
+      Alert.alert('Sucesso', `${pet.name} foi inscrito no evento.`);
+    } catch (joinError) {
+      const message = joinError instanceof Error ? joinError.message : 'Erro ao inscrever pet';
+      Alert.alert('Erro', message);
+    } finally {
+      setJoiningPetId(null);
+    }
+  };
 
   const formatEventDate = (dateIso: string) => {
     const date = new Date(dateIso);
@@ -395,35 +552,6 @@ export default function GruposEventos() {
       hour: '2-digit',
       minute: '2-digit',
     })}`;
-  };
-
-  const handleJoinEvent = async (eventId: string) => {
-    if (!currentUserId) {
-      Alert.alert('Sessao', 'Faz login para te juntares a um evento.');
-      return;
-    }
-
-    const petId = activeProfile?.type === 'pet' ? activeProfile.id : null;
-
-    try {
-      const response = await fetch(`${API_URL}/events/${eventId}/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: currentUserId, pet_id: petId }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Nao foi possivel entrar no evento');
-      }
-
-      setJoinedEventIds((prev) => new Set([...prev, eventId]));
-      Alert.alert('Sucesso', 'Entraste no evento.');
-      await fetchEvents(false);
-    } catch (joinError) {
-      const message = joinError instanceof Error ? joinError.message : 'Erro ao entrar no evento';
-      Alert.alert('Erro', message);
-    }
   };
 
   const handleOpenAttendees = async (eventId: string, title: string) => {
@@ -604,10 +732,12 @@ export default function GruposEventos() {
         <View style={styles.sectionOne}>
           <View style={styles.headerRow}>
             <Text style={styles.screenTitle}>Eventos</Text>
-            <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateModal(true)}>
-              <FontAwesome5 name="plus" size={14} color="white" />
-              <Text style={styles.createButtonText}>Criar</Text>
-            </TouchableOpacity>
+            {isTutor && (
+              <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateModal(true)}>
+                <FontAwesome5 name="plus" size={14} color="white" />
+                <Text style={styles.createButtonText}>Criar</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.searchWrapper}>
@@ -783,7 +913,6 @@ export default function GruposEventos() {
                         )
                       : 0;
 
-                const isJoined = isUserJoined(item.event_id);
                 const isFull =
                   typeof item.max_attendees === 'number' &&
                   item.max_attendees > 0 &&
@@ -813,13 +942,13 @@ export default function GruposEventos() {
                       <TouchableOpacity
                         style={[
                           styles.joinButton,
-                          (isJoined || isFull) && styles.joinButtonDisabled,
+                          isFull && styles.joinButtonDisabled,
                         ]}
-                        onPress={() => handleJoinEvent(item.event_id)}
-                        disabled={isJoined || isFull}
+                        onPress={() => handleOpenJoinModal(item)}
+                        disabled={isFull}
                       >
                         <Text style={styles.joinButtonText}>
-                          {isJoined ? 'Inscrito' : isFull ? 'Cheio' : 'Juntar'}
+                          {isFull ? 'Cheio' : 'Inscrever pet'}
                         </Text>
                       </TouchableOpacity>
 
@@ -827,7 +956,7 @@ export default function GruposEventos() {
                         style={styles.petsButton}
                         onPress={() => handleOpenAttendees(item.event_id, item.title)}
                       >
-                        <Text style={styles.petsButtonText}>Ver pets</Text>
+                        <Text style={styles.petsButtonText}>Inscritos</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -996,6 +1125,147 @@ export default function GruposEventos() {
             )}
           </ScrollView>
         </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showJoinModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => {
+          setShowJoinModal(false);
+          setSelectedEventForJoin(null);
+        }}
+      >
+        <View style={styles.joinOverlay}>
+          <KeyboardAvoidingView
+            style={styles.joinModalCard}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <View style={styles.joinModalHeader}>
+              <View>
+                <Text style={styles.joinModalTitle}>Inscrever pets</Text>
+                <Text style={styles.joinModalSubtitle}>Escolhe um ou mais pets para este evento</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.joinCloseButton}
+                onPress={() => {
+                  setShowJoinModal(false);
+                  setSelectedEventForJoin(null);
+                }}
+              >
+                <FontAwesome5 name="times" size={18} color="#8B837A" />
+              </TouchableOpacity>
+            </View>
+
+            {selectedEventForJoin && (
+              <View style={styles.joinEventCard}>
+                <Text style={styles.joinEventName}>{selectedEventForJoin.title}</Text>
+                <Text style={styles.joinEventMeta}>{formatEventDate(selectedEventForJoin.starts_at)}</Text>
+                <Text style={styles.joinEventMeta}>{selectedEventForJoin.location}</Text>
+                <Text style={styles.joinEventMeta}>
+                  {selectedEventForJoin.attendee_count} inscritos
+                  {selectedEventForJoin.max_attendees ? ` / ${selectedEventForJoin.max_attendees}` : ''}
+                </Text>
+                <Text style={styles.joinEventNote}>Podes inscrever cada pet separadamente no mesmo evento.</Text>
+              </View>
+            )}
+
+            <View style={styles.joinSearchWrapper}>
+              <FontAwesome5 name="search" size={14} color="#8B837A" style={styles.searchIcon} />
+              <TextInput
+                style={styles.joinSearchInput}
+                placeholder="Pesquisar pets"
+                placeholderTextColor="#A9A096"
+                value={petSearchTerm}
+                onChangeText={setPetSearchTerm}
+              />
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.joinChipsRow}>
+              {availablePetFilters.map((speciesName) => (
+                <TouchableOpacity
+                  key={speciesName}
+                  style={[styles.joinChip, petFilter === speciesName && styles.joinChipActive]}
+                  onPress={() => setPetFilter(speciesName)}
+                >
+                  <Text style={[styles.joinChipText, petFilter === speciesName && styles.joinChipTextActive]}>
+                    {speciesName === 'ALL' ? 'Todos' : speciesName}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {joinModalLoading || petsLoading ? (
+              <View style={styles.joinLoadingContainer}>
+                <ActivityIndicator size="small" color="#57B2A1" />
+                <Text style={styles.joinLoadingText}>A preparar a lista dos teus pets...</Text>
+              </View>
+            ) : petsError ? (
+              <View style={styles.joinErrorContainer}>
+                <FontAwesome5 name="exclamation-circle" size={16} color="#E87A4D" />
+                <Text style={styles.joinErrorText}>{petsError}</Text>
+              </View>
+            ) : pets.length === 0 ? (
+              <View style={styles.joinEmptyContainer}>
+                <FontAwesome5 name="paw" size={22} color="#C7BFB5" />
+                <Text style={styles.joinEmptyTitle}>Ainda não tens pets registados.</Text>
+                <Text style={styles.joinEmptyText}>Adiciona um pet ao teu perfil para o poderes inscrever em eventos.</Text>
+              </View>
+            ) : filteredPets.length === 0 ? (
+              <View style={styles.joinEmptyContainer}>
+                <FontAwesome5 name="search" size={22} color="#C7BFB5" />
+                <Text style={styles.joinEmptyTitle}>Sem resultados</Text>
+                <Text style={styles.joinEmptyText}>Tenta outro nome ou limpa o filtro.</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.joinPetsList} contentContainerStyle={{ paddingBottom: 10 }}>
+                {filteredPets.map((pet) => {
+                  const alreadyJoined = joinedPetIds.has(pet.pet_id);
+                  const isJoiningThisPet = joiningPetId === pet.pet_id;
+                  const isDisabled = alreadyJoined || selectedEventIsFull || isJoiningThisPet;
+
+                  return (
+                    <View key={pet.pet_id} style={styles.joinPetRow}>
+                      {pet.main_photo ? (
+                        <Image source={{ uri: pet.main_photo }} style={styles.joinPetAvatar} />
+                      ) : (
+                        <View style={styles.joinPetAvatarFallback}>
+                          <FontAwesome5 name="paw" size={13} color="#E87A4D" />
+                        </View>
+                      )}
+
+                      <View style={styles.joinPetInfo}>
+                        <Text style={styles.joinPetName}>{pet.name}</Text>
+                        <Text style={styles.joinPetBreed}>
+                          {pet.breed?.name || pet.species?.name || 'Sem espécie definida'}
+                        </Text>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.joinPetButton,
+                          alreadyJoined && styles.joinPetButtonActive,
+                          (selectedEventIsFull && !alreadyJoined) && styles.joinPetButtonDisabled,
+                          isJoiningThisPet && styles.joinPetButtonDisabled,
+                        ]}
+                        onPress={() => handleJoinPet(pet)}
+                        disabled={isDisabled}
+                      >
+                        {isJoiningThisPet ? (
+                          <ActivityIndicator size="small" color="white" />
+                        ) : (
+                          <Text style={styles.joinPetButtonText}>
+                            {alreadyJoined ? 'Inscrito' : selectedEventIsFull ? 'Cheio' : 'Inscrever'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       <Modal
@@ -1608,5 +1878,211 @@ const styles = StyleSheet.create({
     color: '#8B837A',
     fontSize: 12,
     marginTop: 1,
+  },
+  joinOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  joinModalCard: {
+    maxHeight: '84%',
+    backgroundColor: 'white',
+    borderRadius: 22,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  joinModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  joinModalTitle: {
+    color: '#5C4A3D',
+    fontWeight: '800',
+    fontSize: 18,
+  },
+  joinModalSubtitle: {
+    color: '#8B837A',
+    marginTop: 4,
+    fontSize: 12,
+  },
+  joinCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F5F2EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  joinEventCard: {
+    marginTop: 14,
+    backgroundColor: '#F7FAF8',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#D9E8E1',
+  },
+  joinEventName: {
+    color: '#5C4A3D',
+    fontWeight: '800',
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  joinEventMeta: {
+    color: '#6D665E',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  joinEventNote: {
+    marginTop: 8,
+    color: '#2E8B7A',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  joinSearchWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F2EB',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 14,
+  },
+  joinSearchInput: {
+    flex: 1,
+    color: '#5C4A3D',
+    fontSize: 14,
+  },
+  joinChipsRow: {
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  joinChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#D6CEC3',
+    backgroundColor: '#FFFFFF',
+  },
+  joinChipActive: {
+    backgroundColor: '#57B2A1',
+    borderColor: '#57B2A1',
+  },
+  joinChipText: {
+    color: '#5C4A3D',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  joinChipTextActive: {
+    color: 'white',
+  },
+  joinLoadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 24,
+  },
+  joinLoadingText: {
+    color: '#8B837A',
+    fontWeight: '600',
+  },
+  joinErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFF3EE',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  joinErrorText: {
+    flex: 1,
+    color: '#E87A4D',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  joinEmptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 24,
+    paddingHorizontal: 10,
+  },
+  joinEmptyTitle: {
+    color: '#5C4A3D',
+    fontWeight: '800',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  joinEmptyText: {
+    color: '#8B837A',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  joinPetsList: {
+    marginTop: 8,
+  },
+  joinPetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0ECE5',
+  },
+  joinPetAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+  },
+  joinPetAvatarFallback: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#F5F2EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  joinPetInfo: {
+    flex: 1,
+  },
+  joinPetName: {
+    color: '#5C4A3D',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  joinPetBreed: {
+    color: '#8B837A',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  joinPetButton: {
+    minWidth: 92,
+    borderRadius: 12,
+    backgroundColor: '#E87A4D',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  joinPetButtonActive: {
+    backgroundColor: '#57B2A1',
+  },
+  joinPetButtonDisabled: {
+    backgroundColor: '#BDB4A9',
+  },
+  joinPetButtonText: {
+    color: 'white',
+    fontWeight: '800',
+    fontSize: 12,
   },
 });

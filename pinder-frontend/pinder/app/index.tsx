@@ -27,12 +27,13 @@ export default function Login() {
 
   const updateUserLocation = async (userId: string) => {
     try {
+      console.info('[Location] A pedir permissão para atualizar localização', { userId });
       const { status } = await Location.requestForegroundPermissionsAsync();
       
       if (status === 'granted') {
         const location = await Location.getCurrentPositionAsync({});
         
-        console.log(`📍 Localização obtida: ${location.coords.latitude}, ${location.coords.longitude}`);
+        console.info('[Location] Localização obtida e enviada ao backend', { userId });
         
         // Atualizar localização no backend
         await fetch(`${API_URL}/users/${userId}/location`, {
@@ -46,7 +47,7 @@ export default function Login() {
           }),
         });
       } else {
-        console.log('Permissão de localização negada');
+          console.info('[Location] Permissão de localização negada');
       }
     } catch (error) {
       console.error('Erro ao obter localização:', error);
@@ -58,6 +59,7 @@ export default function Login() {
     setIsLoading(true);
 
     try {
+      console.info('[Auth] A iniciar login');
       const response = await fetch(`${API_URL}/users/login`, {
         method: 'POST',
         headers: {
@@ -69,14 +71,14 @@ export default function Login() {
       const data = await response.json();
 
       if (response.ok) {
-        console.log('Login com sucesso!', data.user);
-        
         const { photo, ...userWithoutPhoto } = data.user;
         
         // Guarda o utilizador usando a memória do telemóvel
         await AsyncStorage.setItem('user', JSON.stringify(userWithoutPhoto));
         
         const userId = data.user.user_id || data.user.id;
+
+        console.info('[Auth] Login bem-sucedido', { userId });
 
         // Tenta obter localização em background
         updateUserLocation(userId);
