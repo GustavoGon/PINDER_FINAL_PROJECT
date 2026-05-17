@@ -31,6 +31,34 @@ module.exports = (io) => {
           return ack?.({ ok: false, error: "Invalid payload" });
         }
 
+        // 🔎 validar que o sender pertence à conversa (ou é tutor interessado em adoção)
+        const match = await prisma.match.findUnique({
+          where: { match_id: matchId },
+          include: {
+            pet1: { include: { owner: true } },
+            pet2: { include: { owner: true } },
+          },
+        });
+
+        if (!match) return ack?.({ ok: false, error: 'Match not found' });
+
+        let allowed = false;
+        if (match.pet1?.owner?.user_id === senderId || match.pet2?.owner?.user_id === senderId) {
+          allowed = true;
+        }
+
+        if (!allowed && match.is_adoption) {
+          const adoptionInteraction = await prisma.tutorAdoptionInteraction.findFirst({
+            where: {
+              tutor_id: senderId,
+              pet_id: { in: [match.pet_1_id, match.pet_2_id] },
+            },
+          });
+          if (adoptionInteraction) allowed = true;
+        }
+
+        if (!allowed) return ack?.({ ok: false, error: 'Not authorized for this conversation' });
+
         // 💾 guardar na DB
         const message = await prisma.message.create({
           data: {

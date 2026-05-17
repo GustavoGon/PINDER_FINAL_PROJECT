@@ -15,9 +15,6 @@ async function buildConversationEntry(match, currentUserId) {
   const currentUserOwnsPet1 = pet1?.owner?.user_id === currentUserId;
   const currentUserOwnsPet2 = pet2?.owner?.user_id === currentUserId;
 
-  if (pet1?.pet_id === pet2?.pet_id) {
-    return null;
-  }
 
   const otherPet = currentUserOwnsPet1 ? pet2 : pet1;
   let otherUser = otherPet?.owner;
@@ -88,15 +85,7 @@ exports.getOrCreateDirectConversation = async (req, res) => {
       return res.status(400).json({ error: "target_pet_id é obrigatório" });
     }
 
-    if (!sender_pet_id) {
-      return res.status(400).json({ error: "sender_pet_id é obrigatório" });
-    }
-
-    if (sender_pet_id === target_pet_id) {
-      return res.status(400).json({ error: "sender_pet_id e target_pet_id não podem ser iguais" });
-    }
-
-    const conversationPetId = sender_pet_id;
+    const conversationPetId = sender_pet_id || target_pet_id;
 
     const existingMatch = await prisma.match.findFirst({
       where: {
@@ -164,7 +153,22 @@ exports.getMessages = async (req, res) => {
     return res.status(404).json({ error: "Conversa não encontrada" });
   }
 
-  if (!matchHasUser(match, String(userId || ""))) {
+  let hasAccess = matchHasUser(match, String(userId || ""));
+  if (!hasAccess && match.is_adoption) {
+    try {
+      const adoptionInteraction = await prisma.tutorAdoptionInteraction.findFirst({
+        where: {
+          tutor_id: String(userId || ""),
+          pet_id: { in: [match.pet_1_id, match.pet_2_id] },
+        },
+      });
+      if (adoptionInteraction) hasAccess = true;
+    } catch (err) {
+      console.error('Erro ao validar interação de adoção:', err);
+    }
+  }
+
+  if (!hasAccess) {
     return res.status(403).json({ error: "Sem acesso a esta conversa" });
   }
 
@@ -192,7 +196,22 @@ exports.createMessage = async (req, res) => {
     return res.status(404).json({ error: "Conversa não encontrada" });
   }
 
-  if (!matchHasUser(match, sender_id)) {
+  let hasPermission = matchHasUser(match, sender_id);
+  if (!hasPermission && match.is_adoption) {
+    try {
+      const adoptionInteraction = await prisma.tutorAdoptionInteraction.findFirst({
+        where: {
+          tutor_id: sender_id,
+          pet_id: { in: [match.pet_1_id, match.pet_2_id] },
+        },
+      });
+      if (adoptionInteraction) hasPermission = true;
+    } catch (err) {
+      console.error('Erro ao validar interação de adoção:', err);
+    }
+  }
+
+  if (!hasPermission) {
     return res.status(403).json({ error: "Sem permissão para enviar mensagem nesta conversa" });
   }
 
@@ -228,7 +247,22 @@ exports.markAsRead = async (req, res) => {
     return res.status(404).json({ error: "Conversa não encontrada" });
   }
 
-  if (!matchHasUser(match, userId)) {
+  let hasAccess2 = matchHasUser(match, userId);
+  if (!hasAccess2 && match.is_adoption) {
+    try {
+      const adoptionInteraction = await prisma.tutorAdoptionInteraction.findFirst({
+        where: {
+          tutor_id: userId,
+          pet_id: { in: [match.pet_1_id, match.pet_2_id] },
+        },
+      });
+      if (adoptionInteraction) hasAccess2 = true;
+    } catch (err) {
+      console.error('Erro ao validar interação de adoção:', err);
+    }
+  }
+
+  if (!hasAccess2) {
     return res.status(403).json({ error: "Sem acesso a esta conversa" });
   }
 

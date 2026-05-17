@@ -62,16 +62,12 @@ export default function ChatDetail() {
         }
 
         if (!finalMatchId && petIdStr) {
-          if (!finalSenderPetId) {
-            setStatusMessage('Não foi possível identificar o teu pet para iniciar esta conversa.');
-            return;
-          }
 
           const directMatchResponse = await fetch(`${API_URL}/messages/direct`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              sender_pet_id: finalSenderPetId,
+              sender_pet_id: finalSenderPetId || undefined,
               target_pet_id: petIdStr,
             }),
           });
