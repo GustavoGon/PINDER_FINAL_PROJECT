@@ -283,6 +283,11 @@ export default function GruposEventos() {
     }
 
     try {
+      console.info('[Events] A carregar eventos', {
+        refresh: fromPullToRefresh,
+        radiusKm: radius,
+      });
+
       if (!fromPullToRefresh) {
         setLoading(true);
       }
@@ -316,6 +321,10 @@ export default function GruposEventos() {
         .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
 
       setEvents(enriched);
+      console.info('[Events] Eventos carregados', {
+        count: enriched.length,
+        radiusKm: radius,
+      });
     } catch (fetchError) {
       const message = fetchError instanceof Error ? fetchError.message : 'Erro ao procurar eventos';
       setError(message);
@@ -333,6 +342,11 @@ export default function GruposEventos() {
 
     try {
       const radiusMeters = Math.min(radius * 1000, 50000);
+      console.info('[Events] A carregar parques proximos', {
+        radiusKm: radius,
+        radiusMeters,
+      });
+
       const query = `[out:json][timeout:15];(node["leisure"="park"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});way["leisure"="park"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});relation["leisure"="park"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude}););out center 20;`;
 
       const response = await fetch('https://overpass-api.de/api/interpreter', {
@@ -369,6 +383,10 @@ export default function GruposEventos() {
         .slice(0, 20);
 
       setParks(mapped);
+      console.info('[Events] Parques carregados', {
+        count: mapped.length,
+        radiusKm: radius,
+      });
     } catch {
       console.warn('Nao foi possivel carregar parques nesta tentativa.');
       setParks([]);
@@ -517,6 +535,10 @@ export default function GruposEventos() {
 
     try {
       setJoiningPetId(pet.pet_id);
+      console.info('[Events] A inscrever pet', {
+        eventId: selectedEventForJoin.event_id,
+        petId: pet.pet_id,
+      });
 
       const response = await fetch(`${API_URL}/events/${selectedEventForJoin.event_id}/join`, {
         method: 'POST',
@@ -534,6 +556,10 @@ export default function GruposEventos() {
 
       setJoinedPetIds((prev) => new Set([...prev, pet.pet_id]));
       await Promise.all([fetchEvents(false), refreshSelectedEvent(selectedEventForJoin.event_id)]);
+      console.info('[Events] Pet inscrito com sucesso', {
+        eventId: selectedEventForJoin.event_id,
+        petId: pet.pet_id,
+      });
     } catch (joinError) {
       const message = joinError instanceof Error ? joinError.message : 'Erro ao inscrever pet';
       Alert.alert('Erro', message);
@@ -549,6 +575,10 @@ export default function GruposEventos() {
 
     try {
       setJoiningPetId(pet.pet_id);
+      console.info('[Events] A remover pet do evento', {
+        eventId: selectedEventForJoin.event_id,
+        petId: pet.pet_id,
+      });
 
       const response = await fetch(`${API_URL}/events/${selectedEventForJoin.event_id}/leave`, {
         method: 'DELETE',
@@ -571,6 +601,10 @@ export default function GruposEventos() {
       });
 
       await Promise.all([fetchEvents(false), refreshSelectedEvent(selectedEventForJoin.event_id)]);
+      console.info('[Events] Pet removido do evento', {
+        eventId: selectedEventForJoin.event_id,
+        petId: pet.pet_id,
+      });
     } catch (leaveError) {
       const message = leaveError instanceof Error ? leaveError.message : 'Erro ao remover pet do evento';
       Alert.alert('Erro', message);
@@ -593,6 +627,7 @@ export default function GruposEventos() {
 
   const handleOpenAttendees = async (eventId: string, title: string) => {
     try {
+      console.info('[Events] A abrir lista de inscritos', { eventId, title });
       setShowAttendeesModal(true);
       setAttendeesLoading(true);
       setSelectedEventTitle(title);
@@ -604,6 +639,10 @@ export default function GruposEventos() {
 
       const eventDetail: EventItem = await response.json();
       setEventAttendees(eventDetail.attendees || []);
+      console.info('[Events] Lista de inscritos carregada', {
+        eventId,
+        attendeeCount: eventDetail.attendees?.length || 0,
+      });
     } catch (attendeesError) {
       const message = attendeesError instanceof Error ? attendeesError.message : 'Erro ao carregar participantes';
       Alert.alert('Erro', message);
@@ -649,6 +688,10 @@ export default function GruposEventos() {
 
     try {
       setCreatingEvent(true);
+      console.info('[Events] A criar evento', {
+        title: formData.title.trim(),
+        location: formData.location.trim(),
+      });
 
       const payload = {
         title: formData.title.trim(),
@@ -710,6 +753,9 @@ export default function GruposEventos() {
       setShowCreateModal(false);
 
       Alert.alert('Sucesso', 'Evento criado com sucesso.');
+      console.info('[Events] Evento criado com sucesso', {
+        eventId: createdEvent.event_id,
+      });
       await fetchEvents(false);
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : 'Erro ao criar evento';

@@ -19,6 +19,12 @@ exports.createEvent = async (req, res) => {
       created_by,
     } = req.body;
 
+    console.info('[Events] Pedido para criar evento', {
+      title,
+      location,
+      createdBy: created_by,
+    });
+
     const event = await prisma.event.create({
       data: {
         title,
@@ -40,6 +46,11 @@ exports.createEvent = async (req, res) => {
     res.status(201).json({
       ...event,
       status: getEventStatus(event),
+    });
+
+    console.info('[Events] Evento criado', {
+      eventId: event.event_id,
+      title: event.title,
     });
   } catch (error) {
     console.error(error);
@@ -70,6 +81,11 @@ exports.getEventById = async (req, res) => {
     if (!event) {
       return res.status(404).json({ error: "Event not found" });
     }
+
+    console.info('[Events] Evento carregado', {
+      eventId: id,
+      attendeeCount: event.attendees.length,
+    });
 
     res.json({
       ...event,
@@ -232,10 +248,19 @@ exports.getRecommendedEvents = async (req, res) => {
   try {
     const { latitude, longitude } = req.query;
 
+    console.info('[Events] Pedido de recomendações', {
+      hasLatitude: Boolean(latitude),
+      hasLongitude: Boolean(longitude),
+    });
+
     const events = await getNearbyEvents(
       parseFloat(latitude),
       parseFloat(longitude),
     );
+
+    console.info('[Events] Recomendações geradas', {
+      count: events.length,
+    });
 
     res.json(events);
   } catch (error) {
