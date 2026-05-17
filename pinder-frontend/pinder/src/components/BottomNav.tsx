@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import PetSelectionPopup from './PetSelectionPopup';
 import { useActiveProfile } from '../contexts/ActiveProfileContext';
@@ -13,6 +14,7 @@ interface BottomNavProps {
 export default function BottomNav({ activePage }: BottomNavProps) {
   const router = useRouter();
   const { activeProfile } = useActiveProfile();
+  const insets = useSafeAreaInsets();
   const [showPopup, setShowPopup] = useState(false);
 
   const isTutor = activeProfile?.type === 'tutor';
@@ -24,7 +26,7 @@ export default function BottomNav({ activePage }: BottomNavProps) {
 
   return (
     <>
-      <View style={styles.navContainer}>
+      <View style={[styles.navContainer, { bottom: insets.bottom, paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 12 : 10) }]}>
         
       
         <TouchableOpacity 
@@ -98,10 +100,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#EAE6DF',
-    paddingBottom: Platform.OS === 'ios' ? 25 : 10,
     paddingTop: 10,
     position: 'absolute',
-    bottom: 0,
     width: '100%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
