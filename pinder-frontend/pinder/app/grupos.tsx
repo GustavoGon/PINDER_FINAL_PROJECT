@@ -32,6 +32,7 @@ type StatusFilter = 'ALL' | 'UPCOMING' | 'ONGOING';
 type PetFilter = 'ALL' | string;
 
 interface EventAttendee {
+  event_attendee_id?: string;
   event_id: string;
   user_id: string;
   pet_id: string | null;
@@ -1333,7 +1334,9 @@ export default function GruposEventos() {
             ) : (
               <FlatList
                 data={eventAttendees}
-                keyExtractor={(item) => `${item.event_id}-${item.user_id}`}
+                keyExtractor={(item, index) =>
+                  item.event_attendee_id || `${item.event_id}-${item.user_id}-${item.pet_id || 'no-pet'}-${index}`
+                }
                 renderItem={({ item }) => (
                   <View style={styles.attendeeRow}>
                     {item.pet?.main_photo ? (
