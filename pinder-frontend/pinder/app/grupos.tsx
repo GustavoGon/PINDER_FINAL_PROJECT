@@ -533,9 +533,45 @@ export default function GruposEventos() {
 
       setJoinedPetIds((prev) => new Set([...prev, pet.pet_id]));
       await Promise.all([fetchEvents(false), refreshSelectedEvent(selectedEventForJoin.event_id)]);
-      Alert.alert('Sucesso', `${pet.name} foi inscrito no evento.`);
     } catch (joinError) {
       const message = joinError instanceof Error ? joinError.message : 'Erro ao inscrever pet';
+      Alert.alert('Erro', message);
+    } finally {
+      setJoiningPetId(null);
+    }
+  };
+
+  const handleLeavePet = async (pet: PetItem) => {
+    if (!selectedEventForJoin || !currentUserId) {
+      return;
+    }
+
+    try {
+      setJoiningPetId(pet.pet_id);
+
+      const response = await fetch(`${API_URL}/events/${selectedEventForJoin.event_id}/leave`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUserId,
+          pet_id: pet.pet_id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Nao foi possivel remover o pet do evento');
+      }
+
+      setJoinedPetIds((prev) => {
+        const next = new Set(prev);
+        next.delete(pet.pet_id);
+        return next;
+      });
+
+      await Promise.all([fetchEvents(false), refreshSelectedEvent(selectedEventForJoin.event_id)]);
+    } catch (leaveError) {
+      const message = leaveError instanceof Error ? leaveError.message : 'Erro ao remover pet do evento';
       Alert.alert('Erro', message);
     } finally {
       setJoiningPetId(null);
@@ -1245,17 +1281,17 @@ export default function GruposEventos() {
                         style={[
                           styles.joinPetButton,
                           alreadyJoined && styles.joinPetButtonActive,
-                          (selectedEventIsFull && !alreadyJoined) && styles.joinPetButtonDisabled,
+                          !alreadyJoined && selectedEventIsFull && styles.joinPetButtonDisabled,
                           isJoiningThisPet && styles.joinPetButtonDisabled,
                         ]}
-                        onPress={() => handleJoinPet(pet)}
-                        disabled={isDisabled}
+                        onPress={() => (alreadyJoined ? handleLeavePet(pet) : handleJoinPet(pet))}
+                        disabled={isJoiningThisPet || (!alreadyJoined && selectedEventIsFull)}
                       >
                         {isJoiningThisPet ? (
                           <ActivityIndicator size="small" color="white" />
                         ) : (
                           <Text style={styles.joinPetButtonText}>
-                            {alreadyJoined ? 'Inscrito' : selectedEventIsFull ? 'Cheio' : 'Inscrever'}
+                            {alreadyJoined ? 'Desinscrever' : selectedEventIsFull ? 'Cheio' : 'Inscrever'}
                           </Text>
                         )}
                       </TouchableOpacity>
