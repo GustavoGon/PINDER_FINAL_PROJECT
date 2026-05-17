@@ -1,10 +1,23 @@
 const prisma = require("../prisma");
 
+function matchHasUser(match, userId) {
+  return Boolean(
+    userId && (
+      match?.pet1?.owner?.user_id === userId ||
+      match?.pet2?.owner?.user_id === userId
+    )
+  );
+}
+
 async function buildConversationEntry(match, currentUserId) {
   const pet1 = match.pet1;
   const pet2 = match.pet2;
   const currentUserOwnsPet1 = pet1?.owner?.user_id === currentUserId;
   const currentUserOwnsPet2 = pet2?.owner?.user_id === currentUserId;
+
+  if (pet1?.pet_id === pet2?.pet_id) {
+    return null;
+  }
 
   const otherPet = currentUserOwnsPet1 ? pet2 : pet1;
   let otherUser = otherPet?.owner;
@@ -75,7 +88,15 @@ exports.getOrCreateDirectConversation = async (req, res) => {
       return res.status(400).json({ error: "target_pet_id é obrigatório" });
     }
 
-    const conversationPetId = sender_pet_id || target_pet_id;
+    if (!sender_pet_id) {
+      return res.status(400).json({ error: "sender_pet_id é obrigatório" });
+    }
+
+    if (sender_pet_id === target_pet_id) {
+      return res.status(400).json({ error: "sender_pet_id e target_pet_id não podem ser iguais" });
+    }
+
+    const conversationPetId = sender_pet_id;
 
     const existingMatch = await prisma.match.findFirst({
       where: {
@@ -129,6 +150,23 @@ exports.getOrCreateDirectConversation = async (req, res) => {
 // GET messages for a match
 exports.getMessages = async (req, res) => {
   const { matchId } = req.params;
+  const { userId } = req.query;
+
+  const match = await prisma.match.findUnique({
+    where: { match_id: matchId },
+    include: {
+      pet1: { include: { owner: true } },
+      pet2: { include: { owner: true } },
+    },
+  });
+
+  if (!match) {
+    return res.status(404).json({ error: "Conversa não encontrada" });
+  }
+
+  if (!matchHasUser(match, String(userId || ""))) {
+    return res.status(403).json({ error: "Sem acesso a esta conversa" });
+  }
 
   const messages = await prisma.message.findMany({
     where: { match_id: matchId },
@@ -141,6 +179,22 @@ exports.getMessages = async (req, res) => {
 // POST message
 exports.createMessage = async (req, res) => {
   const { match_id, sender_id, content } = req.body;
+
+  const match = await prisma.match.findUnique({
+    where: { match_id },
+    include: {
+      pet1: { include: { owner: true } },
+      pet2: { include: { owner: true } },
+    },
+  });
+
+  if (!match) {
+    return res.status(404).json({ error: "Conversa não encontrada" });
+  }
+
+  if (!matchHasUser(match, sender_id)) {
+    return res.status(403).json({ error: "Sem permissão para enviar mensagem nesta conversa" });
+  }
 
   const message = await prisma.message.create({
     data: {
@@ -161,6 +215,22 @@ exports.createMessage = async (req, res) => {
 exports.markAsRead = async (req, res) => {
   const { matchId } = req.params;
   const { userId } = req.body;
+
+  const match = await prisma.match.findUnique({
+    where: { match_id: matchId },
+    include: {
+      pet1: { include: { owner: true } },
+      pet2: { include: { owner: true } },
+    },
+  });
+
+  if (!match) {
+    return res.status(404).json({ error: "Conversa não encontrada" });
+  }
+
+  if (!matchHasUser(match, userId)) {
+    return res.status(403).json({ error: "Sem acesso a esta conversa" });
+  }
 
   await prisma.message.updateMany({
     where: {

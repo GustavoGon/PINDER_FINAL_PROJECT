@@ -53,7 +53,7 @@ export default function MatchModal({ visible, petName, petPhoto, onClose, isTuto
           
           {isTutor ? (
             <Text style={styles.subtitleText}>
-              Podes agora conversar com o doador para mais detalhes!
+              Podes agora ver as adoções e continuar o processo.
             </Text>
           ) : (
             <Text style={styles.subtitleText}>
@@ -64,7 +64,7 @@ export default function MatchModal({ visible, petName, petPhoto, onClose, isTuto
           {/* Close Button */}
           <TouchableOpacity style={styles.button} onPress={onClose}>
             <Text style={styles.buttonText}>
-              {isTutor ? '💬 Ir para Chat' : '👀 Ver Match'}
+              {isTutor ? '🐾 Ver Adoções' : '👀 Ver Match'}
             </Text>
           </TouchableOpacity>
         </Animated.View>

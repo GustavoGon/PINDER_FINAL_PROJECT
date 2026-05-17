@@ -58,10 +58,6 @@ export default function Chat() {
     setSelectedTab(activeProfile?.type === 'tutor' ? 'adoptions' : 'matches');
   }, [activeProfile?.type]);
 
-  useEffect(() => {
-    fetchConversations();
-  }, [activeProfile?.id, activeProfile?.type]);
-
   useFocusEffect(
     React.useCallback(() => {
       fetchConversations();
@@ -119,8 +115,14 @@ export default function Chat() {
       }
 
       const data = await response.json();
+      const uniqueConversations = Array.from(
+        new Map(
+          data.map((conversation: any) => [conversation.matchId || conversation.id, conversation])
+        ).values()
+      );
+
       setConversations(
-        data.map((conversation: any) => ({
+        uniqueConversations.map((conversation: any) => ({
           ...conversation,
           time: conversation.time ? formatTime(new Date(conversation.time)) : 'Agora',
           unread: conversation.unread || 0,

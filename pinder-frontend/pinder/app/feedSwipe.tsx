@@ -195,11 +195,9 @@ export default function FeedSwipe() {
           const adoptionData = await adoptionResponse.json();
           console.log(`✅ Adoção guardada:`, adoptionData);
 
-          if (adoptionData && isLike) {
+          if (isLike) {
             setMatchedPet(swipedPet);
             setShowMatchModal(true);
-          } else if (isLike) {
-            console.log(`❤️ Interesse registado em: ${swipedPet.name}`);
           } else {
             console.log(`❌ Tutor rejeitou: ${swipedPet.name}`);
           }
@@ -248,7 +246,7 @@ export default function FeedSwipe() {
     setShowMatchModal(false);
     
     if (activeProfile?.type === 'tutor') {
-      router.push('/chat');
+      router.push('/adoptions');
     } else {
       router.push('/matches');
     }
@@ -279,6 +277,16 @@ export default function FeedSwipe() {
     outputRange: [0, 0, 1, 1]
   });
 
+  const matchModal = (
+    <MatchModal
+      visible={showMatchModal}
+      petName={matchedPet?.name || ''}
+      petPhoto={matchedPet?.main_photo || ''}
+      onClose={handleMatchModalClose}
+      isTutor={activeProfile?.type === 'tutor'}
+    />
+  );
+
   // ECRÃS DE ESTADO (Loading & Fim do Feed)
   if (isLoading) {
     return (
@@ -288,6 +296,7 @@ export default function FeedSwipe() {
           <ActivityIndicator size="large" color="#5C4A3D" />
           <Text style={{ marginTop: 15, color: '#666' }}>A procurar pets na tua zona...</Text>
         </View>
+        {matchModal}
         <BottomNav activePage="home" />
       </View>
     );
@@ -308,6 +317,7 @@ export default function FeedSwipe() {
             {emptyMessage}
           </Text>
         </View>
+        {matchModal}
         <BottomNav activePage="home" />
       </View>
     );
@@ -362,7 +372,7 @@ export default function FeedSwipe() {
               </View>
 
               <View style={styles.storyBarsContainer}>
-                {petPhotos.map((_, idx) => (
+                {petPhotos.map((_: string, idx: number) => (
                   <View key={idx} style={[styles.bar, idx === currentPhotoIndex && styles.barActive]} />
                 ))}
               </View>
@@ -388,16 +398,16 @@ export default function FeedSwipe() {
               <TouchableOpacity style={[styles.actionBtn, styles.btnDislike]} onPress={() => forceSwipe('left')}>
                 <FontAwesome5 name="frown" size={26} color="#ff7a7a" />
               </TouchableOpacity>
-              
+
               <TouchableOpacity style={[styles.actionBtn, styles.btnLike]} onPress={() => forceSwipe('right')}>
                 <FontAwesome5 name="heart" size={28} color="#4CAF50" solid />
               </TouchableOpacity>
-              
-              <View style={styles.flipActionContainer}>
+
+              <View style={styles.flipActionGroup}>
                 <TouchableOpacity style={[styles.actionBtn, styles.btnFlip]} onPress={() => handleFlip()}>
-                  <MaterialIcons name="flip-to-back" size={24} color="#5C4A3D" />
+                  <MaterialIcons name={isFlipped ? 'flip-to-front' : 'flip-to-back'} size={22} color="#5C4A3D" />
                 </TouchableOpacity>
-                <Text style={styles.flipHint}>Ver Descrição &gt;</Text>
+                <Text style={styles.flipHint}>{isFlipped ? 'Voltar' : 'Descrição'}</Text>
               </View>
             </View>
           </Animated.View>
@@ -411,10 +421,6 @@ export default function FeedSwipe() {
                   <AdoptionBadge isForAdoption={currentPet?.forAdoption} />
                 </View>
               </View>
-              <TouchableOpacity style={styles.btnFlipBack} onPress={() => handleFlip()}>
-                <MaterialIcons name="flip-to-front" size={20} color="#5C4A3D" />
-                <Text style={styles.btnFlipBackText}> Voltar</Text>
-              </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.backContent} showsVerticalScrollIndicator={false}>
@@ -454,23 +460,24 @@ export default function FeedSwipe() {
               <TouchableOpacity style={[styles.actionBtn, styles.btnDislike]} onPress={() => forceSwipe('left')}>
                 <FontAwesome5 name="frown" size={28} color="#ff7a7a" />
               </TouchableOpacity>
-              
+
               <TouchableOpacity style={[styles.actionBtn, styles.btnLike]} onPress={() => forceSwipe('right')}>
                 <FontAwesome5 name="heart" size={28} color="#4CAF50" solid />
               </TouchableOpacity>
+
+              <View style={styles.flipActionGroup}>
+                <TouchableOpacity style={[styles.actionBtn, styles.btnFlip]} onPress={() => handleFlip()}>
+                  <MaterialIcons name={isFlipped ? 'flip-to-front' : 'flip-to-back'} size={22} color="#5C4A3D" />
+                </TouchableOpacity>
+                <Text style={styles.flipHint}>{isFlipped ? 'Voltar' : 'Descrição'}</Text>
+              </View>
             </View>
           </Animated.View>
 
         </Animated.View>
       </View>
 
-      <MatchModal
-        visible={showMatchModal}
-        petName={matchedPet?.name || ''}
-        petPhoto={matchedPet?.main_photo || ''}
-        onClose={handleMatchModalClose}
-        isTutor={activeProfile?.type === 'tutor'}
-      />
+      {matchModal}
 
       <BottomNav activePage="home" />
     </View>
@@ -491,6 +498,23 @@ const styles = StyleSheet.create({
   petImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   
   badgeOverlay: { position: 'absolute', top: 25, left: 10, zIndex: 20 },
+  flipOverlayButton: {
+    position: 'absolute',
+    top: 18,
+    right: 18,
+    zIndex: 30,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#F5F2EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 5,
+  },
   adoptionStatus: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, gap: 5 },
   adoptionStatusText: { color: 'white', fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' },
 
@@ -515,13 +539,10 @@ const styles = StyleSheet.create({
   btnDislike: { borderWidth: 1, borderColor: '#ffe0e0' },
   btnLike: { width: 70, height: 70, borderRadius: 35, borderWidth: 1, borderColor: '#e6ffe6' },
   btnFlip: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#F5F2EB' },
-  flipActionContainer: { alignItems: 'center' },
-  flipHint: { fontSize: 10, color: '#999', marginTop: 4 },
-  
+  flipActionGroup: { alignItems: 'center', justifyContent: 'center', minWidth: 70 },
+  flipHint: { fontSize: 10, color: '#8D8379', marginTop: 4, fontWeight: '600' },
   backHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 15, marginBottom: 15 },
   backTitle: { fontSize: 26, fontWeight: 'bold', color: '#5C4A3D' },
-  btnFlipBack: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F2EB', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginTop: 4 },
-  btnFlipBackText: { color: '#5C4A3D', fontWeight: 'bold', marginLeft: 4 },
   backContent: { flex: 1 },
   backBreedLine: { fontSize: 16, color: '#666', fontWeight: 'bold', marginBottom: 15 },
   
