@@ -62,19 +62,39 @@ export default function ChatDetail() {
         }
 
         if (!finalMatchId && petIdStr) {
+          // if we couldn't determine a sender pet, we'll fallback to sender_user_id (logged user)
+          if (!finalSenderPetId && !realUserId) {
+            setStatusMessage('Sessão inválida. Volta a iniciar sessão.');
+            return;
+          }
+
+          const payload: any = { target_pet_id: petIdStr };
+          if (finalSenderPetId) payload.sender_pet_id = finalSenderPetId;
+          else if (realUserId) payload.sender_user_id = realUserId;
+          console.log('prepareChat: direct match payload', payload);
 
           const directMatchResponse = await fetch(`${API_URL}/messages/direct`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sender_pet_id: finalSenderPetId || undefined,
-              target_pet_id: petIdStr,
-            }),
+            body: JSON.stringify(payload),
           });
 
           if (directMatchResponse.ok) {
             const directMatch = await directMatchResponse.json();
             finalMatchId = directMatch.match_id;
+          } else {
+            // read server error and show it to user for easier debugging
+            let text = 'Não foi possível preparar a conversa.';
+            try {
+              const body = await directMatchResponse.json();
+              if (body && body.error) text = body.error;
+            } catch (e) {
+              try {
+                text = await directMatchResponse.text();
+              } catch (e2) {}
+            }
+            setStatusMessage(text || 'Não foi possível preparar a conversa.');
+            return;
           }
         }
 

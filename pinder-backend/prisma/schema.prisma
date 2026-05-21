@@ -53,6 +53,7 @@ model User {
   messages                  Message[]
   preferences               UserPreference[]
   tutorAdoptionInteractions TutorAdoptionInteraction[]
+  adoptedMatches            Match[]  @relation("match_adopter")
 
   currentAdoptions Adoption[] @relation("currentOwner")
   previousAdoptions Adoption[] @relation("previousOwner")
@@ -159,6 +160,12 @@ model Match {
   unmatch_timestamp DateTime?
 
   is_adoption Boolean @default(false)
+
+  // When an adoption conversation originates from a tutor without a pet,
+  // we may store the initiating tutor here to keep adoption matches unique per tutor.
+  adopter_id String?
+
+  adopter User? @relation("match_adopter", fields: [adopter_id], references: [user_id])
 
   adoption_confirmed_by_owner Boolean @default(false)
   adoption_confirmed_by_adopter Boolean @default(false)

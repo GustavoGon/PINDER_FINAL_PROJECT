@@ -4,7 +4,8 @@ function matchHasUser(match, userId) {
   return Boolean(
     userId && (
       match?.pet1?.owner?.user_id === userId ||
-      match?.pet2?.owner?.user_id === userId
+      match?.pet2?.owner?.user_id === userId ||
+      match?.adopter_id === userId
     )
   );
 }
@@ -79,26 +80,49 @@ async function buildConversationEntry(match, currentUserId) {
 // POST /messages/direct - Criar ou reutilizar uma conversa direta entre dois pets
 exports.getOrCreateDirectConversation = async (req, res) => {
   try {
-    const { sender_pet_id, target_pet_id } = req.body;
+    const { sender_pet_id, target_pet_id, sender_user_id } = req.body;
 
     if (!target_pet_id) {
       return res.status(400).json({ error: "target_pet_id é obrigatório" });
     }
 
-    const conversationPetId = sender_pet_id || target_pet_id;
+    let conversationPetId = null;
+    let adopterId = null;
 
-    const existingMatch = await prisma.match.findFirst({
-      where: {
-        OR: [
-          { pet_1_id: conversationPetId, pet_2_id: target_pet_id },
-          { pet_1_id: target_pet_id, pet_2_id: conversationPetId },
-        ],
-      },
-      include: {
-        pet1: { include: { owner: true } },
-        pet2: { include: { owner: true } },
-      },
-    });
+    if (sender_pet_id) {
+      conversationPetId = sender_pet_id;
+    } else if (sender_user_id) {
+      adopterId = sender_user_id;
+    }
+
+    // Find existing match depending on whether we have a sender pet or a sender user
+    let existingMatch = null;
+    if (conversationPetId) {
+      existingMatch = await prisma.match.findFirst({
+        where: {
+          OR: [
+            { pet_1_id: conversationPetId, pet_2_id: target_pet_id },
+            { pet_1_id: target_pet_id, pet_2_id: conversationPetId },
+          ],
+        },
+        include: {
+          pet1: { include: { owner: true } },
+          pet2: { include: { owner: true } },
+        },
+      });
+    } else if (adopterId) {
+      existingMatch = await prisma.match.findFirst({
+        where: {
+          is_adoption: true,
+          adopter_id: adopterId,
+          pet_1_id: target_pet_id,
+        },
+        include: {
+          pet1: { include: { owner: true } },
+          pet2: { include: { owner: true } },
+        },
+      });
+    }
 
     if (existingMatch) {
       if (!existingMatch.is_adoption) {
@@ -117,12 +141,16 @@ exports.getOrCreateDirectConversation = async (req, res) => {
       return res.json(existingMatch);
     }
 
+    // Create a new match. If no sender pet, create a self-match but set adopter_id so it's unique per tutor.
+    const matchData = {
+      pet_1_id: conversationPetId || target_pet_id,
+      pet_2_id: target_pet_id,
+      is_adoption: true,
+      adopter_id: adopterId || null,
+    };
+
     const match = await prisma.match.create({
-      data: {
-        pet_1_id: conversationPetId,
-        pet_2_id: target_pet_id,
-        is_adoption: true,
-      },
+      data: matchData,
       include: {
         pet1: { include: { owner: true } },
         pet2: { include: { owner: true } },
@@ -266,14 +294,13 @@ exports.markAsRead = async (req, res) => {
     return res.status(403).json({ error: "Sem acesso a esta conversa" });
   }
 
-  await prisma.message.updateMany({
-    where: {
-      match_id: matchId,
-      sender_id: { not: userId }, // only messages from OTHER user
-      read: false,
-    },
-    data: { read: true },
-  });
+  await prisma.$executeRaw`
+    UPDATE messages
+    SET read = true
+    WHERE match_id = ${matchId}
+      AND sender_id <> ${userId}
+      AND read = false
+  `;
 
   res.json({ success: true });
 };
@@ -281,16 +308,13 @@ exports.markAsRead = async (req, res) => {
 exports.getUnreadCounts = async (req, res) => {
   const { userId } = req.params;
 
-  const counts = await prisma.message.groupBy({
-    by: ["match_id"],
-    where: {
-      read: false,
-      sender_id: { not: userId },
-    },
-    _count: {
-      message_id: true,
-    },
-  });
+  const counts = await prisma.$queryRaw`
+    SELECT match_id, COUNT(*)::int AS unread_count
+    FROM messages
+    WHERE read = false
+      AND sender_id <> ${userId}
+    GROUP BY match_id
+  `;
 
   res.json(counts);
 };
@@ -306,19 +330,16 @@ exports.getConversations = async (req, res) => {
 
     const petIds = userPets.map((pet) => pet.pet_id);
     const conversationMap = new Map();
-    const unreadCounts = await prisma.message.groupBy({
-      by: ["match_id"],
-      where: {
-        read: false,
-        sender_id: { not: userId },
-      },
-      _count: {
-        message_id: true,
-      },
-    });
+    const unreadCounts = await prisma.$queryRaw`
+      SELECT match_id, COUNT(*)::int AS unread_count
+      FROM messages
+      WHERE read = false
+        AND sender_id <> ${userId}
+      GROUP BY match_id
+    `;
 
     const unreadByMatchId = new Map(
-      unreadCounts.map((entry) => [entry.match_id, entry._count.message_id])
+      unreadCounts.map((entry) => [entry.match_id, Number(entry.unread_count)])
     );
 
     if (petIds.length > 0) {
