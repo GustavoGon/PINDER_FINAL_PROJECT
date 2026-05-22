@@ -6,11 +6,12 @@ interface MatchModalProps {
   visible: boolean;
   petName: string;
   petPhoto: string;
-  onClose: () => void;
+  onContinue: () => void;
+  onViewDetails: () => void;
   isTutor?: boolean;
 }
 
-export default function MatchModal({ visible, petName, petPhoto, onClose, isTutor }: MatchModalProps) {
+export default function MatchModal({ visible, petName, petPhoto, onContinue, onViewDetails, isTutor }: MatchModalProps) {
   const scaleAnim = useRef(new Animated.Value(0)).current;
   
   useEffect(() => {
@@ -27,7 +28,7 @@ export default function MatchModal({ visible, petName, petPhoto, onClose, isTuto
   }, [visible]);
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onContinue}>
       <View style={styles.overlay}>
         <Animated.View style={[styles.container, { transform: [{ scale: scaleAnim }] }]}>
           
@@ -62,11 +63,17 @@ export default function MatchModal({ visible, petName, petPhoto, onClose, isTuto
           )}
 
           {/* Close Button */}
-          <TouchableOpacity style={styles.button} onPress={onClose}>
-            <Text style={styles.buttonText}>
-              {isTutor ? '🐾 Ver Adoções' : '👀 Ver Match'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity style={[styles.button, styles.secondaryButton]} onPress={onContinue}>
+              <Text style={[styles.buttonText, styles.secondaryButtonText]}>Continuar no feed</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.button} onPress={onViewDetails}>
+              <Text style={styles.buttonText}>
+                {isTutor ? '🐾 Ver Adoções' : '👀 Ver Match'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -197,6 +204,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingHorizontal: 10,
   },
+  buttonRow: {
+    width: '100%',
+    gap: 10,
+  },
   button: {
     backgroundColor: '#FF6B9D',
     paddingHorizontal: 30,
@@ -204,10 +215,18 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     marginTop: 10,
   },
+  secondaryButton: {
+    backgroundColor: '#F5F2EB',
+    borderWidth: 1,
+    borderColor: '#D6CEC3',
+  },
   buttonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  secondaryButtonText: {
+    color: '#5C4A3D',
   },
 });

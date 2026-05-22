@@ -88,10 +88,10 @@ export default function PetProfile() {
 
         <View style={styles.infoCard}>
           <Text style={styles.infoLabel}>Tutor</Text>
-          <Text style={styles.infoValue}>{pet.owner?.username || 'Desconhecido'}</Text>
+          <Text style={styles.infoValue}>{pet.owner?.username || pet.user?.username || pet.username || 'Desconhecido'}</Text>
 
           <Text style={styles.infoLabel}>Descrição</Text>
-          <Text style={styles.description}>{pet.description || 'Sem descrição disponível.'}</Text>
+          <Text style={styles.description}>{pet.description || pet.pet_description || pet.bio || 'Sem descrição disponível.'}</Text>
         </View>
 
         <View style={styles.statsRow}>

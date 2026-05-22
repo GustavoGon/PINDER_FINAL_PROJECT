@@ -25,6 +25,7 @@ export default function DashboardTutor() {
   const { activeProfile, setActiveProfile } = useActiveProfile();
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -153,7 +154,13 @@ const onDateChange = (event: any, selectedDate?: Date) => {
   }, [speciesId]);
 
   const handleLogout = async () => {
+    setShowLogoutModal(true);
+  };
+
+  const confirmLogout = async () => {
+    setShowLogoutModal(false);
     await AsyncStorage.removeItem('user');
+    setActiveProfile({ type: 'tutor', id: null });
     router.replace('/'); 
   };
 
@@ -287,6 +294,7 @@ const onDateChange = (event: any, selectedDate?: Date) => {
         const userStr = await AsyncStorage.getItem('user');
         const user = userStr ? JSON.parse(userStr) : {};
         setActiveProfile({ type: 'tutor', id: user.user_id || user.id });
+        router.replace('/feedSwipe');
       } else {
         setSaveMessage('Erro ao apagar o pet.');
       }
@@ -302,8 +310,22 @@ const onDateChange = (event: any, selectedDate?: Date) => {
     return new Date(dateString).toISOString().split('T')[0];
   };
 
-  if (isLoading) return <View style={styles.loadingCenter}><Text>A carregar perfil... 🐾</Text></View>;
-  if (!profileData) return <View style={styles.loadingCenter}><Text>Nenhum perfil encontrado.</Text></View>;
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#F5F2EB', position: 'relative' }}>
+        <View style={styles.loadingCenter}><Text>A carregar perfil... 🐾</Text></View>
+        <BottomNav activePage="profile" />
+      </View>
+    );
+  }
+  if (!profileData) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#F5F2EB', position: 'relative' }}>
+        <View style={styles.loadingCenter}><Text>Nenhum perfil encontrado.</Text></View>
+        <BottomNav activePage="profile" />
+      </View>
+    );
+  }
 
   
 
@@ -312,6 +334,28 @@ const onDateChange = (event: any, selectedDate?: Date) => {
       style={{ flex: 1, backgroundColor: '#F5F2EB' }} 
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <Modal visible={showLogoutModal} transparent={true} animationType="fade" onRequestClose={() => setShowLogoutModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.iconCircleError}>
+              <FontAwesome5 name="sign-out-alt" size={24} color="#ff4d4d" />
+            </View>
+            <Text style={styles.modalTitle}>Terminar sessão?</Text>
+            <Text style={styles.modalText}>
+              Tens a certeza que queres sair da conta?
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.btnCancel} onPress={() => setShowLogoutModal(false)}>
+                <Text style={styles.btnCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.btnDelete} onPress={confirmLogout}>
+                <Text style={styles.btnDeleteText}>Sair</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
         
         {/* MODAL DE APAGAR PET */}

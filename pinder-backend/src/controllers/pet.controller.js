@@ -14,7 +14,7 @@ exports.getPetById = async (req, res) => {
     const { pet_id } = req.params;
     const pet = await prisma.pet.findUnique({
       where: { pet_id: pet_id },
-      include: { breed: true, species: true, photos: true } // Traz a raça, espécie e fotos do pet
+      include: { breed: true, species: true, photos: true, owner: true } // Traz a raça, espécie, fotos e tutor do pet
     });
 
     if (!pet) {

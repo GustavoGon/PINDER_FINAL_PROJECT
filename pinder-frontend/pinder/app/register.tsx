@@ -17,6 +17,8 @@ import { useRouter, Link } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useActiveProfile } from '../src/contexts/ActiveProfileContext';
 
 export default function Register() {
   const [username, setUsername] = useState('');
@@ -33,6 +35,7 @@ export default function Register() {
   const [districts, setDistricts] = useState<any[]>([]);
   
   const router = useRouter();
+  const { setActiveProfile } = useActiveProfile();
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
 
   // Carregar distritos ao abrir
@@ -112,11 +115,13 @@ export default function Register() {
 
       if (response.ok) {
         setSuccessMessage('Conta criada com sucesso! A redirecionar...');
-        
-        
-        setTimeout(() => {
-          router.replace('/'); 
-        }, 2000);
+
+        const { password: _password, ...userWithoutPassword } = data;
+        await AsyncStorage.setItem('user', JSON.stringify(userWithoutPassword));
+
+        const userId = data.user_id || data.id;
+        setActiveProfile({ type: 'tutor', id: userId });
+        router.replace('/feedSwipe');
       } else {
         if (data.error === "User already exists") {
           setErrorMessage('Este email ou nome de utilizador já está em uso.');

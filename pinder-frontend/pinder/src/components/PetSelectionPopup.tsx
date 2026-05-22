@@ -115,6 +115,7 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
                 console.log(`🔀 [PetSelectionPopup] Selecionando tutor: user_id=${user.user_id}, id=${user.id}, final_id=${tutorId}`);
                 setActiveProfile({ type: 'tutor', id: tutorId });
                 onClose();
+                router.replace('/feedSwipe');
               }}
             >
               <Image
@@ -151,6 +152,7 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
                     onPress={() => {
                       setActiveProfile({ type: 'pet', id: pet.pet_id });
                       onClose();
+                      router.replace('/feedSwipe');
                     }}
                   >
                     <Image

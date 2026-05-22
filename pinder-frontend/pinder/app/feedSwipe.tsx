@@ -244,7 +244,11 @@ export default function FeedSwipe() {
 
   const handleMatchModalClose = () => {
     setShowMatchModal(false);
-    
+  };
+
+  const handleOpenMatchDetails = () => {
+    setShowMatchModal(false);
+
     if (activeProfile?.type === 'tutor') {
       router.push('/adoptions');
     } else {
@@ -282,7 +286,8 @@ export default function FeedSwipe() {
       visible={showMatchModal}
       petName={matchedPet?.name || ''}
       petPhoto={matchedPet?.main_photo || ''}
-      onClose={handleMatchModalClose}
+      onContinue={handleMatchModalClose}
+      onViewDetails={handleOpenMatchDetails}
       isTutor={activeProfile?.type === 'tutor'}
     />
   );
