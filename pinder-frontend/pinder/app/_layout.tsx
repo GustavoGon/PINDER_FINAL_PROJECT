@@ -12,8 +12,11 @@ function BackButtonExitGuard() {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (pathname === '/' || pathname === '/index') {
+        return false;
+      }
+
       const shouldConfirmExit = [
-        '/',
         '/feedSwipe',
         '/dashboard',
         '/chat',
