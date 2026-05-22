@@ -20,6 +20,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 
 import BottomNav from '../src/components/BottomNav';
 import { useActiveProfile } from '../src/contexts/ActiveProfileContext';
@@ -129,6 +130,7 @@ const buildCirclePath = (latitude: number, longitude: number, radiusKm: number) 
 
 export default function GruposEventos() {
   const { activeProfile } = useActiveProfile();
+  const router = useRouter();
   const isTutor = activeProfile?.type === 'tutor';
 
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -371,7 +373,17 @@ export default function GruposEventos() {
         radiusMeters,
       });
 
-      const query = `[out:json][timeout:15];(node["leisure"="park"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});way["leisure"="park"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});relation["leisure"="park"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude}););out center 20;`;
+      const query = `[out:json][timeout:15];(
+        node["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
+        way["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
+        relation["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
+        node["landuse"="forest"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
+        way["landuse"="forest"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
+        relation["landuse"="forest"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
+        node["natural"~"^(wood|tree_row)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
+        way["natural"~"^(wood|tree_row)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
+        relation["natural"~"^(wood|tree_row)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
+      );out center 20;`;
 
       const response = await fetch('https://overpass-api.de/api/interpreter', {
         method: 'POST',
@@ -467,17 +479,6 @@ export default function GruposEventos() {
   }, [filteredEvents]);
 
   const recommendedParks = useMemo(() => parks.slice(0, 4), [parks]);
-  const upcomingEventHighlights = useMemo(() => futureEvents.slice(0, 4), [futureEvents]);
-
-  const openCreateEventAtLocation = useCallback((name: string, latitude: number, longitude: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      location: name,
-      targetLatitude: latitude,
-      targetLongitude: longitude,
-    }));
-    setShowCreateModal(true);
-  }, []);
 
   const staticMapUrl = useMemo(() => {
     const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -889,7 +890,10 @@ export default function GruposEventos() {
           <View style={styles.headerRow}>
             <Text style={styles.screenTitle}>Eventos</Text>
             {isTutor && (
-              <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateModal(true)}>
+              <TouchableOpacity
+                style={styles.createButton}
+                onPress={() => router.push({ pathname: '/create-event', params: { radius: String(radius) } })}
+              >
                 <FontAwesome5 name="plus" size={14} color="white" />
                 <Text style={styles.createButtonText}>Criar</Text>
               </TouchableOpacity>
@@ -1050,76 +1054,6 @@ export default function GruposEventos() {
               <View style={[styles.legendDot, { backgroundColor: '#57B2A1' }]} />
               <Text style={styles.legendText}>Parques</Text>
             </View>
-          </View>
-
-          <View style={styles.mapHighlightsBlock}>
-            <View style={styles.mapHighlightsHeader}>
-              <Text style={styles.mapHighlightsTitle}>Pontos recomendados</Text>
-              <Text style={styles.mapHighlightsSubtitle}>Escolhe um local e cria já o evento nesse ponto.</Text>
-            </View>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mapHighlightsRow}>
-              {recommendedParks.map((park) => {
-                const distance = userLocation
-                  ? calculateDistance(userLocation.latitude, userLocation.longitude, park.latitude, park.longitude)
-                  : null;
-
-                return (
-                  <TouchableOpacity
-                    key={park.id}
-                    style={styles.mapHighlightCard}
-                    onPress={() => openCreateEventAtLocation(park.name, park.latitude, park.longitude)}
-                  >
-                    <View style={styles.mapHighlightIconWrap}>
-                      <FontAwesome5 name="tree" size={14} color="#57B2A1" />
-                    </View>
-                    <Text style={styles.mapHighlightName}>{park.name}</Text>
-                    <Text style={styles.mapHighlightMeta}>
-                      {distance ? `${distance.toFixed(1)} km` : 'Parque próximo'}
-                    </Text>
-                    <Text style={styles.mapHighlightAction}>Criar aqui</Text>
-                  </TouchableOpacity>
-                );
-              })}
-
-              {recommendedParks.length === 0 && (
-                <View style={styles.mapHighlightEmpty}>
-                  <Text style={styles.mapHighlightEmptyText}>Sem parques carregados para este raio.</Text>
-                </View>
-              )}
-            </ScrollView>
-
-            <View style={styles.mapHighlightsHeader}>
-              <Text style={styles.mapHighlightsTitle}>Eventos disponíveis</Text>
-              <Text style={styles.mapHighlightsSubtitle}>Os próximos eventos dentro do raio escolhido.</Text>
-            </View>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mapHighlightsRow}>
-              {upcomingEventHighlights.map((event) => {
-                const distance = typeof event.distance === 'number' ? event.distance : null;
-
-                return (
-                  <TouchableOpacity
-                    key={event.event_id}
-                    style={styles.mapHighlightCard}
-                    onPress={() => handleOpenJoinModal(event)}
-                  >
-                    <View style={[styles.mapHighlightIconWrap, styles.mapHighlightIconEvent]}>
-                      <FontAwesome5 name="paw" size={14} color="#FFFFFF" />
-                    </View>
-                    <Text style={styles.mapHighlightName}>{event.title}</Text>
-                    <Text style={styles.mapHighlightMeta}>{distance ? `${distance.toFixed(1)} km` : event.location}</Text>
-                    <Text style={styles.mapHighlightAction}>Ver evento</Text>
-                  </TouchableOpacity>
-                );
-              })}
-
-              {upcomingEventHighlights.length === 0 && (
-                <View style={styles.mapHighlightEmpty}>
-                  <Text style={styles.mapHighlightEmptyText}>Sem eventos futuros neste raio.</Text>
-                </View>
-              )}
-            </ScrollView>
           </View>
         </View>
 
