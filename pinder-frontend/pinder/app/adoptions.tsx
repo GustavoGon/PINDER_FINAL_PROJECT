@@ -119,6 +119,8 @@ export default function Adoptions() {
           petId: selectedPet.pet.pet_id,
           petName: selectedPet.pet.name,
           petPhoto: selectedPet.pet.main_photo || '',
+          conversationType: 'adoption',
+          adoptionView: 'sent',
         }
       });
     }

@@ -90,6 +90,8 @@ export default function Matches() {
         senderUserId: userId,
         petName: otherPet?.name || 'Chat',
         petPhoto: otherPet?.main_photo || '',
+        conversationType: 'match',
+        adoptionView: 'match',
       },
     });
   };

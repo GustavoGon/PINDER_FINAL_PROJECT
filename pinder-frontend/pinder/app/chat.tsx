@@ -34,7 +34,9 @@ type Conversation = {
   otherUserPhoto?: string;
   otherUserLocation?: string;
   isInterested?: boolean;
-  category: 'matches' | 'adoptions';
+  conversationType?: 'match' | 'adoption';
+  adoptionView?: 'match' | 'received' | 'sent';
+  category: 'matches' | 'adoptions_received' | 'adoptions_sent';
   lastMessageSenderId?: string | null;
 };
 
@@ -46,7 +48,7 @@ export default function Chat() {
   const [isOpeningConversation, setIsOpeningConversation] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentUserId, setCurrentUserId] = useState('');
-  const [selectedTab, setSelectedTab] = useState<'matches' | 'adoptions'>('matches');
+  const [selectedTab, setSelectedTab] = useState<'matches' | 'adoptions_received' | 'adoptions_sent'>('matches');
   const [isActionModalVisible, setIsActionModalVisible] = useState(false);
   const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -55,7 +57,7 @@ export default function Chat() {
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
 
   useEffect(() => {
-    setSelectedTab(activeProfile?.type === 'tutor' ? 'adoptions' : 'matches');
+    setSelectedTab(activeProfile?.type === 'tutor' ? 'adoptions_received' : 'matches');
   }, [activeProfile?.type]);
 
   useFocusEffect(
@@ -126,7 +128,9 @@ export default function Chat() {
           ...conversation,
           time: conversation.time ? formatTime(new Date(conversation.time)) : 'Agora',
           unread: conversation.unread || 0,
-          category: conversation.isInterested ? 'adoptions' : 'matches',
+          category: conversation.conversationType === 'adoption'
+            ? (conversation.adoptionView === 'sent' ? 'adoptions_sent' : 'adoptions_received')
+            : 'matches',
           lastMessageSenderId: conversation.lastMessageSenderId || null,
         }))
       );
@@ -140,29 +144,27 @@ export default function Chat() {
   const getChatDisplayInfo = (chat: Conversation) => {
     // Verifica se o pet na conversa pertence ao utilizador atual
     const isMyPet = myPets.some(
-      (p) => 
-        (chat.otherPetId && p.pet_id === chat.otherPetId) || 
+      (p) =>
+        (chat.otherPetId && p.pet_id === chat.otherPetId) ||
         (p.name === chat.name)
     );
 
-    if (chat.category === 'adoptions') {
-      if (isMyPet) {
-        // O utilizador é o Dono do Pet (DD). Quer ver os dados do Adotante (EE).
+    if (chat.conversationType === 'adoption') {
+      if (chat.adoptionView === 'received' || isMyPet) {
         return {
           avatar: chat.otherUserPhoto || 'https://placehold.co/60x60/eeeeee/999999?text=Avatar',
           title: chat.otherUserName || 'Adotante',
           subtitle: `Interesse em ${chat.name}`,
-          subtitleIcon: 'heart' as const
-        };
-      } else {
-        // O utilizador é o Adotante (EE). Quer ver os dados do Pet que vai adotar.
-        return {
-          avatar: chat.img || 'https://placehold.co/60x60/eeeeee/999999?text=Pet',
-          title: chat.name,
-          subtitle: chat.otherUserName || 'Tutor',
-          subtitleIcon: 'paw' as const
+          subtitleIcon: 'heart' as const,
         };
       }
+
+      return {
+        avatar: chat.img || 'https://placehold.co/60x60/eeeeee/999999?text=Pet',
+        title: chat.name,
+        subtitle: `Com ${chat.otherUserName || 'Tutor'}`,
+        subtitleIcon: 'paw' as const,
+      };
     } else {
       // MATCHES (Amizade) -> Vê sempre os dados do outro Pet
       return {
@@ -190,6 +192,8 @@ export default function Chat() {
         senderUserId: currentUserId,
         petName: displayInfo.title,
         petPhoto: displayInfo.avatar,
+        conversationType: chat.conversationType || 'match',
+        adoptionView: chat.adoptionView || 'match',
       },
     });
   };
@@ -258,8 +262,10 @@ export default function Chat() {
   }, [isOpeningConversation]);
 
   const matchesCount = conversations.filter((chat) => chat.category === 'matches').length;
-  const adoptionsCount = conversations.filter((chat) => chat.category === 'adoptions').length;
+  const adoptionsReceivedCount = conversations.filter((chat) => chat.category === 'adoptions_received').length;
+  const adoptionsSentCount = conversations.filter((chat) => chat.category === 'adoptions_sent').length;
   const showAdoptionsTab = activeProfile?.type === 'tutor';
+  const showMatchesTab = activeProfile?.type !== 'tutor';
 
   const filteredConversations = conversations
     .filter((chat) => chat.category === selectedTab)
@@ -287,26 +293,40 @@ export default function Chat() {
       </View>
 
       <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tabButton, selectedTab === 'matches' && styles.tabButtonActive]}
-          onPress={() => setSelectedTab('matches')}
-        >
-          <Text style={[styles.tabText, selectedTab === 'matches' && styles.tabTextActive]}>Matches</Text>
-          <View style={[styles.tabCount, selectedTab === 'matches' && styles.tabCountActive]}>
-            <Text style={[styles.tabCountText, selectedTab === 'matches' && styles.tabCountTextActive]}>{matchesCount}</Text>
-          </View>
-        </TouchableOpacity>
-
-        {showAdoptionsTab && (
+        {showMatchesTab && (
           <TouchableOpacity
-            style={[styles.tabButton, selectedTab === 'adoptions' && styles.tabButtonActive]}
-            onPress={() => setSelectedTab('adoptions')}
+            style={[styles.tabButton, selectedTab === 'matches' && styles.tabButtonActive]}
+            onPress={() => setSelectedTab('matches')}
           >
-            <Text style={[styles.tabText, selectedTab === 'adoptions' && styles.tabTextActive]}>Adoções</Text>
-            <View style={[styles.tabCount, selectedTab === 'adoptions' && styles.tabCountActive]}>
-              <Text style={[styles.tabCountText, selectedTab === 'adoptions' && styles.tabCountTextActive]}>{adoptionsCount}</Text>
+            <Text style={[styles.tabText, selectedTab === 'matches' && styles.tabTextActive]}>Matches</Text>
+            <View style={[styles.tabCount, selectedTab === 'matches' && styles.tabCountActive]}>
+              <Text style={[styles.tabCountText, selectedTab === 'matches' && styles.tabCountTextActive]}>{matchesCount}</Text>
             </View>
           </TouchableOpacity>
+        )}
+
+        {showAdoptionsTab && (
+          <>
+            <TouchableOpacity
+              style={[styles.tabButton, selectedTab === 'adoptions_received' && styles.tabButtonActive]}
+              onPress={() => setSelectedTab('adoptions_received')}
+            >
+              <Text style={[styles.tabText, selectedTab === 'adoptions_received' && styles.tabTextActive]}>Recebidas</Text>
+              <View style={[styles.tabCount, selectedTab === 'adoptions_received' && styles.tabCountActive]}>
+                <Text style={[styles.tabCountText, selectedTab === 'adoptions_received' && styles.tabCountTextActive]}>{adoptionsReceivedCount}</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabButton, selectedTab === 'adoptions_sent' && styles.tabButtonActive]}
+              onPress={() => setSelectedTab('adoptions_sent')}
+            >
+              <Text style={[styles.tabText, selectedTab === 'adoptions_sent' && styles.tabTextActive]}>Enviadas</Text>
+              <View style={[styles.tabCount, selectedTab === 'adoptions_sent' && styles.tabCountActive]}>
+                <Text style={[styles.tabCountText, selectedTab === 'adoptions_sent' && styles.tabCountTextActive]}>{adoptionsSentCount}</Text>
+              </View>
+            </TouchableOpacity>
+          </>
         )}
       </View>
 

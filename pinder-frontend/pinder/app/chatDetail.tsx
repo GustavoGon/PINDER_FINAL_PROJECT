@@ -20,7 +20,7 @@ import BottomNav from '../src/components/BottomNav';
 
 export default function ChatDetail() {
   const router = useRouter();
-  const { matchId, userId, petName, petPhoto, petId, senderPetId, senderUserId } = useLocalSearchParams();
+  const { matchId, userId, petName, petPhoto, petId, senderPetId, senderUserId, conversationType, adoptionView } = useLocalSearchParams();
 
   const matchIdStr = String(matchId || '');
   const routeUserIdStr = String(userId || '');
@@ -29,6 +29,8 @@ export default function ChatDetail() {
   const petIdStr = String(petId || '');
   const senderPetIdStr = String(senderPetId || '');
   const senderUserIdStr = String(senderUserId || '');
+  const conversationTypeStr = String(conversationType || 'match');
+  const adoptionViewStr = String(adoptionView || 'match');
 
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
@@ -213,7 +215,11 @@ export default function ChatDetail() {
 
         <View style={styles.headerInfo}>
           <Text style={styles.headerTitle}>{petNameStr}</Text>
-          <Text style={styles.headerSubtitle}>Chat aberto</Text>
+          <Text style={styles.headerSubtitle}>
+            {conversationTypeStr === 'adoption'
+              ? (adoptionViewStr === 'received' ? 'Adoção recebida' : 'Adoção enviada')
+              : 'Match mútuo'}
+          </Text>
         </View>
       </View>
 

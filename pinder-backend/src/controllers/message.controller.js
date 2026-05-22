@@ -15,14 +15,19 @@ async function buildConversationEntry(match, currentUserId) {
   const pet2 = match.pet2;
   const currentUserOwnsPet1 = pet1?.owner?.user_id === currentUserId;
   const currentUserOwnsPet2 = pet2?.owner?.user_id === currentUserId;
+  const isAdoptionConversation = Boolean(match.is_adoption);
+  const isOwnerView = isAdoptionConversation && (currentUserOwnsPet1 || currentUserOwnsPet2);
 
 
   const otherPet = currentUserOwnsPet1 ? pet2 : pet1;
   let otherUser = otherPet?.owner;
+  let adoptionView = "match";
 
   // Corrige o caso em que o adotante não tem pet na conversa (pet_1_id == pet_2_id)
-  if (match.is_adoption && pet1 && pet2 && pet1.pet_id === pet2.pet_id) {
-    if (currentUserOwnsPet1) {
+  if (isAdoptionConversation) {
+    adoptionView = isOwnerView ? "received" : "sent";
+
+    if (pet1 && pet2 && pet1.pet_id === pet2.pet_id && isOwnerView) {
       // O usuário atual é o Dono do Pet. Precisamos descobrir quem é o Adotante.
       try {
         let adopterId = null;
@@ -72,7 +77,9 @@ async function buildConversationEntry(match, currentUserId) {
     otherUserName: otherUser.username,
     otherUserPhoto: otherUser.photo || "https://placehold.co/100x100/eeeeee/999999?text=Sem+Avatar",
     otherUserLocation: otherUser.location || null,
-    isInterested: Boolean(match.is_adoption),
+    isInterested: isAdoptionConversation,
+    conversationType: isAdoptionConversation ? "adoption" : "match",
+    adoptionView,
     _sortTimestamp: lastMessage?.timestamp || match.timestamp,
   };
 }
@@ -114,8 +121,9 @@ exports.getOrCreateDirectConversation = async (req, res) => {
       existingMatch = await prisma.match.findFirst({
         where: {
           is_adoption: true,
-          adopter_id: adopterId,
           pet_1_id: target_pet_id,
+          pet_2_id: target_pet_id,
+          OR: [{ adopter_id: adopterId }, { adopter_id: null }],
         },
         include: {
           pet1: { include: { owner: true } },
@@ -128,7 +136,23 @@ exports.getOrCreateDirectConversation = async (req, res) => {
       if (!existingMatch.is_adoption) {
         const updatedMatch = await prisma.match.update({
           where: { match_id: existingMatch.match_id },
-          data: { is_adoption: true },
+          data: {
+            is_adoption: true,
+            adopter_id: adopterId || existingMatch.adopter_id || null,
+          },
+          include: {
+            pet1: { include: { owner: true } },
+            pet2: { include: { owner: true } },
+          },
+        });
+
+        return res.json(updatedMatch);
+      }
+
+      if (adopterId && !existingMatch.adopter_id) {
+        const updatedMatch = await prisma.match.update({
+          where: { match_id: existingMatch.match_id },
+          data: { adopter_id: adopterId },
           include: {
             pet1: { include: { owner: true } },
             pet2: { include: { owner: true } },
