@@ -1,10 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Platform,
-  NativeModules,
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
@@ -14,6 +13,7 @@ import {
   KeyboardAvoidingView,
   FlatList,
   Image,
+  ImageBackground,
   Alert,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -82,29 +82,50 @@ interface Region {
 
 const RADIUS_OPTIONS = [5, 10, 25, 50];
 
-const hasNativeMapsModule =
-  Platform.OS === 'web' ||
-  Boolean(
-    (NativeModules as any)?.AIRMapModule ||
-      (NativeModules as any)?.AirMapModule ||
-      (NativeModules as any)?.RNMapsAirModule,
-  );
+const getMapRegionFromRadius = (latitude: number, longitude: number, radiusKm: number): Region => {
+  const span = Math.max(radiusKm * 0.035, 0.03);
 
-let MapViewComponent: any = null;
-let MarkerComponent: any = null;
-let GoogleProvider: any = undefined;
+  return {
+    latitude,
+    longitude,
+    latitudeDelta: span,
+    longitudeDelta: span,
+  };
+};
 
-if (hasNativeMapsModule) {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Maps = require('react-native-maps');
-    MapViewComponent = Maps.default;
-    MarkerComponent = Maps.Marker;
-    GoogleProvider = Maps.PROVIDER_GOOGLE;
-  } catch (error) {
-    console.warn('react-native-maps indisponivel neste runtime:', error);
+const getZoomFromRadius = (radiusKm: number) => {
+  if (radiusKm <= 5) return 14;
+  if (radiusKm <= 10) return 13;
+  if (radiusKm <= 25) return 12;
+  return 11;
+};
+
+const buildCirclePath = (latitude: number, longitude: number, radiusKm: number) => {
+  const points: string[] = [];
+  const earthRadiusKm = 6371;
+  const angularDistance = radiusKm / earthRadiusKm;
+
+  for (let index = 0; index <= 24; index += 1) {
+    const bearing = (index / 24) * Math.PI * 2;
+    const lat1 = (latitude * Math.PI) / 180;
+    const lon1 = (longitude * Math.PI) / 180;
+
+    const lat2 = Math.asin(
+      Math.sin(lat1) * Math.cos(angularDistance) +
+        Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing),
+    );
+    const lon2 =
+      lon1 +
+      Math.atan2(
+        Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(lat1),
+        Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2),
+      );
+
+    points.push(`${(lat2 * 180) / Math.PI},${((lon2 * 180) / Math.PI + 540) % 360 - 180}`);
   }
-}
+
+  return points.join('|');
+};
 
 export default function GruposEventos() {
   const { activeProfile } = useActiveProfile();
@@ -146,11 +167,14 @@ export default function GruposEventos() {
   const [joinModalLoading, setJoinModalLoading] = useState(false);
   const [joiningPetId, setJoiningPetId] = useState<string | null>(null);
   const [joinedPetIds, setJoinedPetIds] = useState<Set<string>>(new Set());
+  const radiusRef = useRef(radius);
 
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     location: '',
+    targetLatitude: null as number | null,
+    targetLongitude: null as number | null,
     maxAttendees: '',
     startsDate: new Date(),
     startsTime: new Date(),
@@ -205,17 +229,17 @@ export default function GruposEventos() {
   }, [loadPets]);
 
   useEffect(() => {
+    radiusRef.current = radius;
+  }, [radius]);
+
+  useEffect(() => {
     const getLocation = async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           const fallback = { latitude: 40.283, longitude: -7.5 };
           setUserLocation(fallback);
-          setMapRegion({
-            ...fallback,
-            latitudeDelta: 0.08,
-            longitudeDelta: 0.08,
-          });
+          setMapRegion(getMapRegionFromRadius(fallback.latitude, fallback.longitude, radiusRef.current));
           return;
         }
 
@@ -226,25 +250,25 @@ export default function GruposEventos() {
         };
 
         setUserLocation(nextLocation);
-        setMapRegion({
-          ...nextLocation,
-          latitudeDelta: 0.08,
-          longitudeDelta: 0.08,
-        });
+        setMapRegion(getMapRegionFromRadius(nextLocation.latitude, nextLocation.longitude, radiusRef.current));
       } catch (locationError) {
         console.error('Erro ao obter localizacao:', locationError);
         const fallback = { latitude: 40.283, longitude: -7.5 };
         setUserLocation(fallback);
-        setMapRegion({
-          ...fallback,
-          latitudeDelta: 0.08,
-          longitudeDelta: 0.08,
-        });
+        setMapRegion(getMapRegionFromRadius(fallback.latitude, fallback.longitude, radiusRef.current));
       }
     };
 
     getLocation();
   }, []);
+
+  useEffect(() => {
+    if (!userLocation) {
+      return;
+    }
+
+    setMapRegion(getMapRegionFromRadius(userLocation.latitude, userLocation.longitude, radius));
+  }, [radius, userLocation]);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371;
@@ -333,7 +357,7 @@ export default function GruposEventos() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [userLocation, currentUserId]);
+  }, [userLocation, radius]);
 
   const fetchNearbyParks = useCallback(async () => {
     if (!userLocation) {
@@ -441,6 +465,50 @@ export default function GruposEventos() {
       .filter((event) => new Date(event.starts_at).getTime() >= now.getTime() - 60 * 1000)
       .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
   }, [filteredEvents]);
+
+  const recommendedParks = useMemo(() => parks.slice(0, 4), [parks]);
+  const upcomingEventHighlights = useMemo(() => futureEvents.slice(0, 4), [futureEvents]);
+
+  const openCreateEventAtLocation = useCallback((name: string, latitude: number, longitude: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      location: name,
+      targetLatitude: latitude,
+      targetLongitude: longitude,
+    }));
+    setShowCreateModal(true);
+  }, []);
+
+  const staticMapUrl = useMemo(() => {
+    const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+    if (!mapRegion || !googleMapsApiKey) {
+      return null;
+    }
+
+    const center = `${mapRegion.latitude},${mapRegion.longitude}`;
+    const radiusCircle = buildCirclePath(mapRegion.latitude, mapRegion.longitude, radius);
+    const markers = [
+      userLocation ? `markers=color:0x2E8B7A|label:U|${userLocation.latitude},${userLocation.longitude}` : null,
+      ...filteredEvents.slice(0, 6).map(
+        (event) => `markers=color:0xE87A4D|label:E|${event.latitude},${event.longitude}`,
+      ),
+      ...parks.slice(0, 8).map((park) => `markers=color:0x57B2A1|label:P|${park.latitude},${park.longitude}`),
+    ].filter((marker): marker is string => Boolean(marker));
+
+    const style = [
+      'feature:poi.park|element:geometry|color:0xd6ead8',
+      'feature:landscape|element:geometry|color:0xf4f1ea',
+      'feature:water|element:geometry|color:0xd9edf5',
+      'feature:road|element:geometry|color:0xffffff',
+    ];
+
+    return `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(center)}&zoom=${getZoomFromRadius(radius)}&size=900x260&scale=2&maptype=roadmap${
+      style.map((item) => `&style=${encodeURIComponent(item)}`).join('')
+    }&path=${encodeURIComponent(`fillcolor:0x2E8B7A22|color:0x2E8B7A88|weight:2|${radiusCircle}`)}${
+      markers.length > 0 ? `&${markers.map((marker) => encodeURIComponent(marker)).join('&')}` : ''
+    }&key=${encodeURIComponent(googleMapsApiKey)}`;
+  }, [filteredEvents, mapRegion, parks, radius, userLocation]);
 
   const availablePetFilters = useMemo(() => {
     const uniqueSpecies = Array.from(
@@ -693,14 +761,17 @@ export default function GruposEventos() {
         location: formData.location.trim(),
       });
 
+      const eventLatitude = formData.targetLatitude ?? userLocation.latitude;
+      const eventLongitude = formData.targetLongitude ?? userLocation.longitude;
+
       const payload = {
         title: formData.title.trim(),
         description: formData.description.trim() || null,
         starts_at: startsAt.toISOString(),
         ends_at: endsAt ? endsAt.toISOString() : null,
         location: formData.location.trim(),
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
+        latitude: eventLatitude,
+        longitude: eventLongitude,
         image: null,
         max_attendees: formData.maxAttendees ? parseInt(formData.maxAttendees, 10) : null,
         created_by: currentUserId,
@@ -743,6 +814,8 @@ export default function GruposEventos() {
         title: '',
         description: '',
         location: '',
+        targetLatitude: null,
+        targetLongitude: null,
         maxAttendees: '',
         startsDate: new Date(),
         startsTime: new Date(),
@@ -877,34 +950,51 @@ export default function GruposEventos() {
 
         <View style={styles.sectionTwo}>
           <Text style={styles.sectionTitle}>Mapa de eventos e parques proximos</Text>
-          {mapRegion && MapViewComponent && MarkerComponent ? (
-            <MapViewComponent
-              provider={GoogleProvider}
-              style={styles.map}
-              initialRegion={mapRegion}
-              showsUserLocation
-              showsMyLocationButton
+          {staticMapUrl ? (
+            <ImageBackground
+              source={{ uri: staticMapUrl }}
+              style={styles.mapPreview}
+              imageStyle={styles.mapPreviewImage}
             >
-              {filteredEvents.map((event) => (
-                <MarkerComponent
+              <View style={styles.mapPreviewOverlay} />
+
+              {userLocation && (
+                <View style={[styles.previewMarker, styles.previewUserMarker, buildPreviewPoint(userLocation.latitude, userLocation.longitude)]}>
+                  <FontAwesome5 name="map-marker-alt" size={18} color="#2E8B7A" />
+                </View>
+              )}
+
+              {filteredEvents.slice(0, 4).map((event) => (
+                <View
                   key={event.event_id}
-                  coordinate={{ latitude: event.latitude, longitude: event.longitude }}
-                  title={event.title}
-                  description={event.location}
-                  pinColor="#E87A4D"
-                />
+                  style={[
+                    styles.previewMarker,
+                    styles.previewEventMarker,
+                    buildPreviewPoint(event.latitude, event.longitude),
+                  ]}
+                >
+                  <FontAwesome5 name="paw" size={12} color="#FFFFFF" />
+                </View>
               ))}
 
-              {parks.map((park) => (
-                <MarkerComponent
+              {parks.slice(0, 8).map((park) => (
+                <View
                   key={park.id}
-                  coordinate={{ latitude: park.latitude, longitude: park.longitude }}
-                  title={park.name}
-                  description="Parque"
-                  pinColor="#57B2A1"
-                />
+                  style={[
+                    styles.previewMarker,
+                    styles.previewParkMarker,
+                    buildPreviewPoint(park.latitude, park.longitude),
+                  ]}
+                >
+                  <FontAwesome5 name="tree" size={12} color="#FFFFFF" />
+                </View>
               ))}
-            </MapViewComponent>
+
+              <View style={styles.mapPreviewFooter}>
+                <Text style={styles.mapPreviewTitle}>Preview do mapa</Text>
+                <Text style={styles.mapPreviewText}>Os parques proximos aparecem a verde e os eventos a laranja.</Text>
+              </View>
+            </ImageBackground>
           ) : (
             <View style={styles.mapPreview}>
               <View style={styles.mapPreviewGlowOne} />
@@ -961,6 +1051,76 @@ export default function GruposEventos() {
               <Text style={styles.legendText}>Parques</Text>
             </View>
           </View>
+
+          <View style={styles.mapHighlightsBlock}>
+            <View style={styles.mapHighlightsHeader}>
+              <Text style={styles.mapHighlightsTitle}>Pontos recomendados</Text>
+              <Text style={styles.mapHighlightsSubtitle}>Escolhe um local e cria já o evento nesse ponto.</Text>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mapHighlightsRow}>
+              {recommendedParks.map((park) => {
+                const distance = userLocation
+                  ? calculateDistance(userLocation.latitude, userLocation.longitude, park.latitude, park.longitude)
+                  : null;
+
+                return (
+                  <TouchableOpacity
+                    key={park.id}
+                    style={styles.mapHighlightCard}
+                    onPress={() => openCreateEventAtLocation(park.name, park.latitude, park.longitude)}
+                  >
+                    <View style={styles.mapHighlightIconWrap}>
+                      <FontAwesome5 name="tree" size={14} color="#57B2A1" />
+                    </View>
+                    <Text style={styles.mapHighlightName}>{park.name}</Text>
+                    <Text style={styles.mapHighlightMeta}>
+                      {distance ? `${distance.toFixed(1)} km` : 'Parque próximo'}
+                    </Text>
+                    <Text style={styles.mapHighlightAction}>Criar aqui</Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {recommendedParks.length === 0 && (
+                <View style={styles.mapHighlightEmpty}>
+                  <Text style={styles.mapHighlightEmptyText}>Sem parques carregados para este raio.</Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.mapHighlightsHeader}>
+              <Text style={styles.mapHighlightsTitle}>Eventos disponíveis</Text>
+              <Text style={styles.mapHighlightsSubtitle}>Os próximos eventos dentro do raio escolhido.</Text>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mapHighlightsRow}>
+              {upcomingEventHighlights.map((event) => {
+                const distance = typeof event.distance === 'number' ? event.distance : null;
+
+                return (
+                  <TouchableOpacity
+                    key={event.event_id}
+                    style={styles.mapHighlightCard}
+                    onPress={() => handleOpenJoinModal(event)}
+                  >
+                    <View style={[styles.mapHighlightIconWrap, styles.mapHighlightIconEvent]}>
+                      <FontAwesome5 name="paw" size={14} color="#FFFFFF" />
+                    </View>
+                    <Text style={styles.mapHighlightName}>{event.title}</Text>
+                    <Text style={styles.mapHighlightMeta}>{distance ? `${distance.toFixed(1)} km` : event.location}</Text>
+                    <Text style={styles.mapHighlightAction}>Ver evento</Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {upcomingEventHighlights.length === 0 && (
+                <View style={styles.mapHighlightEmpty}>
+                  <Text style={styles.mapHighlightEmptyText}>Sem eventos futuros neste raio.</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
         </View>
 
         <View style={styles.sectionThree}>
@@ -1014,6 +1174,9 @@ export default function GruposEventos() {
                     <Text style={styles.eventTitle}>{item.title}</Text>
                     <Text style={styles.eventMeta}>{formatEventDate(item.starts_at)}</Text>
                     <Text style={styles.eventMeta}>{item.location}</Text>
+                    <Text style={styles.eventMeta}>
+                      Ponto: {item.latitude.toFixed(4)}, {item.longitude.toFixed(4)}
+                    </Text>
                     <Text style={styles.eventMeta}>{distance.toFixed(1)} km</Text>
 
                     <Text style={styles.attendeesText}>
@@ -1092,10 +1255,83 @@ export default function GruposEventos() {
             <TextInput
               style={styles.input}
               value={formData.location}
-              onChangeText={(value) => setFormData((prev) => ({ ...prev, location: value }))}
+              onChangeText={(value) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  location: value,
+                  targetLatitude: null,
+                  targetLongitude: null,
+                }))
+              }
               placeholder="Ex: Parque do Aviao"
               placeholderTextColor="#A9A096"
             />
+
+            <View style={styles.mapPickerBlock}>
+              <Text style={styles.mapPickerTitle}>Ponto de encontro</Text>
+              <Text style={styles.mapPickerSubtitle}>
+                Escolhe um local recomendado no mapa para guardar as coordenadas do evento.
+              </Text>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mapPickerRow}>
+                <TouchableOpacity
+                  style={styles.mapPickerCard}
+                  onPress={() =>
+                    userLocation &&
+                    setFormData((prev) => ({
+                      ...prev,
+                      location: 'Local atual',
+                      targetLatitude: userLocation.latitude,
+                      targetLongitude: userLocation.longitude,
+                    }))
+                  }
+                >
+                  <View style={[styles.mapPickerIcon, styles.mapPickerIconCurrent]}>
+                    <FontAwesome5 name="location-arrow" size={13} color="#2E8B7A" />
+                  </View>
+                  <Text style={styles.mapPickerName}>Local atual</Text>
+                  <Text style={styles.mapPickerMeta}>Usar a tua posição atual</Text>
+                  <Text style={styles.mapPickerAction}>Selecionar</Text>
+                </TouchableOpacity>
+
+                {recommendedParks.map((park) => {
+                  const distance = userLocation
+                    ? calculateDistance(userLocation.latitude, userLocation.longitude, park.latitude, park.longitude)
+                    : null;
+
+                  return (
+                    <TouchableOpacity
+                      key={park.id}
+                      style={styles.mapPickerCard}
+                      onPress={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          location: park.name,
+                          targetLatitude: park.latitude,
+                          targetLongitude: park.longitude,
+                        }))
+                      }
+                    >
+                      <View style={styles.mapPickerIcon}>
+                        <FontAwesome5 name="tree" size={13} color="#57B2A1" />
+                      </View>
+                      <Text style={styles.mapPickerName}>{park.name}</Text>
+                      <Text style={styles.mapPickerMeta}>{distance ? `${distance.toFixed(1)} km` : 'Parque recomendado'}</Text>
+                      <Text style={styles.mapPickerAction}>Selecionar</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {formData.targetLatitude !== null && formData.targetLongitude !== null && (
+              <View style={styles.mapSelectionBanner}>
+                <FontAwesome5 name="map-marker-alt" size={14} color="#2E8B7A" />
+                <Text style={styles.mapSelectionText}>
+                  Evento baseado no mapa: {formData.location}
+                </Text>
+              </View>
+            )}
 
             <Text style={styles.label}>Data e hora de inicio*</Text>
             <View style={styles.datetimeRow}>
@@ -1249,6 +1485,9 @@ export default function GruposEventos() {
                   {selectedEventForJoin.attendee_count} inscritos
                   {selectedEventForJoin.max_attendees ? ` / ${selectedEventForJoin.max_attendees}` : ''}
                 </Text>
+                <Text style={styles.joinEventMeta}>
+                  Coordenadas: {selectedEventForJoin.latitude.toFixed(5)}, {selectedEventForJoin.longitude.toFixed(5)}
+                </Text>
                 <Text style={styles.joinEventNote}>Podes inscrever cada pet separadamente no mesmo evento.</Text>
               </View>
             )}
@@ -1305,7 +1544,6 @@ export default function GruposEventos() {
                 {filteredPets.map((pet) => {
                   const alreadyJoined = joinedPetIds.has(pet.pet_id);
                   const isJoiningThisPet = joiningPetId === pet.pet_id;
-                  const isDisabled = alreadyJoined || selectedEventIsFull || isJoiningThisPet;
 
                   return (
                     <View key={pet.pet_id} style={styles.joinPetRow}>
@@ -1546,14 +1784,6 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: 14,
   },
-  mapPlaceholder: {
-    height: 220,
-    borderRadius: 14,
-    backgroundColor: '#EFEAE2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
   mapPreview: {
     height: 260,
     borderRadius: 14,
@@ -1562,6 +1792,13 @@ const styles = StyleSheet.create({
     position: 'relative',
     borderWidth: 1,
     borderColor: '#C7D8CB',
+  },
+  mapPreviewImage: {
+    borderRadius: 14,
+  },
+  mapPreviewOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(20, 32, 28, 0.08)',
   },
   mapPreviewGlowOne: {
     position: 'absolute',
@@ -1663,6 +1900,154 @@ const styles = StyleSheet.create({
     color: '#8B837A',
     fontWeight: '600',
     fontSize: 12,
+  },
+  mapHighlightsBlock: {
+    marginTop: 14,
+    gap: 12,
+  },
+  mapHighlightsHeader: {
+    gap: 2,
+  },
+  mapHighlightsTitle: {
+    color: '#5C4A3D',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  mapHighlightsSubtitle: {
+    color: '#8B837A',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  mapHighlightsRow: {
+    gap: 10,
+    paddingBottom: 4,
+  },
+  mapHighlightCard: {
+    width: 168,
+    backgroundColor: '#FBF8F2',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E1D8CA',
+    padding: 12,
+    gap: 6,
+  },
+  mapHighlightIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#E3F2EC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapHighlightIconEvent: {
+    backgroundColor: '#E87A4D',
+  },
+  mapHighlightName: {
+    color: '#5C4A3D',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  mapHighlightMeta: {
+    color: '#7E776F',
+    fontSize: 11,
+  },
+  mapHighlightAction: {
+    color: '#2E8B7A',
+    fontWeight: '800',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  mapHighlightEmpty: {
+    width: 168,
+    minHeight: 104,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#D6CEC3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+  },
+  mapHighlightEmptyText: {
+    color: '#8B837A',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  mapSelectionBanner: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#EAF6F3',
+    borderWidth: 1,
+    borderColor: '#CBE7E0',
+  },
+  mapSelectionText: {
+    flex: 1,
+    color: '#2E8B7A',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  mapPickerBlock: {
+    marginTop: 12,
+    gap: 8,
+  },
+  mapPickerTitle: {
+    color: '#5C4A3D',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  mapPickerSubtitle: {
+    color: '#8B837A',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  mapPickerRow: {
+    gap: 10,
+    paddingBottom: 4,
+  },
+  mapPickerCard: {
+    width: 164,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E1D8CA',
+    backgroundColor: '#FBF8F2',
+    padding: 12,
+    gap: 6,
+  },
+  mapPickerCardActive: {
+    borderColor: '#57B2A1',
+    backgroundColor: '#F0FBF7',
+  },
+  mapPickerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E3F2EC',
+  },
+  mapPickerIconCurrent: {
+    backgroundColor: '#EAF6F3',
+  },
+  mapPickerName: {
+    color: '#5C4A3D',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  mapPickerMeta: {
+    color: '#7E776F',
+    fontSize: 11,
+  },
+  mapPickerAction: {
+    color: '#2E8B7A',
+    fontWeight: '800',
+    fontSize: 11,
+    marginTop: 2,
   },
   cardsList: {
     paddingBottom: 10,
