@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -52,6 +53,40 @@ type LocationSuggestion = {
 
 const RADIUS_OPTIONS = [5, 10, 25, 50];
 
+const getZoomFromRadius = (radiusKm: number) => {
+  if (radiusKm <= 5) return 14;
+  if (radiusKm <= 10) return 13;
+  if (radiusKm <= 25) return 12;
+  return 11;
+};
+
+const buildCirclePath = (latitude: number, longitude: number, radiusKm: number) => {
+  const points: string[] = [];
+  const earthRadiusKm = 6371;
+  const angularDistance = radiusKm / earthRadiusKm;
+
+  for (let index = 0; index <= 24; index += 1) {
+    const bearing = (index / 24) * Math.PI * 2;
+    const lat1 = (latitude * Math.PI) / 180;
+    const lon1 = (longitude * Math.PI) / 180;
+
+    const lat2 = Math.asin(
+      Math.sin(lat1) * Math.cos(angularDistance) +
+        Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing),
+    );
+    const lon2 =
+      lon1 +
+      Math.atan2(
+        Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(lat1),
+        Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2),
+      );
+
+    points.push(`${(lat2 * 180) / Math.PI},${((lon2 * 180) / Math.PI + 540) % 360 - 180}`);
+  }
+
+  return points.join('|');
+};
+
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const earthRadiusKm = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -65,6 +100,21 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return earthRadiusKm * c;
 };
+
+const getMapZoomForDistanceKm = (distanceKm: number) => {
+  if (distanceKm <= 1) return 15;
+  if (distanceKm <= 2.5) return 14;
+  if (distanceKm <= 5) return 13;
+  if (distanceKm <= 10) return 12;
+  if (distanceKm <= 25) return 11;
+  if (distanceKm <= 50) return 10;
+  return 9;
+};
+
+const getMidpoint = (lat1: number, lon1: number, lat2: number, lon2: number) => ({
+  latitude: (lat1 + lat2) / 2,
+  longitude: (lon1 + lon2) / 2,
+});
 
 export default function CreateEventScreen() {
   const router = useRouter();
@@ -151,15 +201,14 @@ export default function CreateEventScreen() {
     getLocation();
   }, []);
 
-  const fetchNearbyParks = useCallback(async (overrideRadiusKm?: number) => {
+  const fetchNearbyParks = useCallback(async () => {
     if (!userLocation) {
       return;
     }
 
     try {
       setLoadingParks(true);
-      const effectiveRadiusKm = typeof overrideRadiusKm === 'number' && overrideRadiusKm > 0 ? overrideRadiusKm : radius;
-      const radiusMeters = Math.min(effectiveRadiusKm * 1000, 50000);
+      const radiusMeters = Math.min(radius * 1000, 50000);
       const query = `[out:json][timeout:15];(
         node["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
         way["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
@@ -197,7 +246,14 @@ export default function CreateEventScreen() {
         .map((element: any) => {
           const latitude = element.lat ?? element.center?.lat;
           const longitude = element.lon ?? element.center?.lon;
-          const name = element.tags?.name || 'Parque';
+          const name =
+            element.tags?.name ||
+            element.tags?.['name:pt'] ||
+            element.tags?.short_name ||
+            element.tags?.official_name ||
+            element.tags?.operator ||
+            element.tags?.['name:en'] ||
+            'Parque sem nome';
 
           if (typeof latitude !== 'number' || typeof longitude !== 'number') {
             return null;
@@ -226,7 +282,106 @@ export default function CreateEventScreen() {
     void fetchNearbyParks();
   }, [fetchNearbyParks]);
 
-  const recommendedParks = useMemo(() => parks.slice(0, 6), [parks]);
+  const selectedPark = useMemo(
+    () => parks.find((park) => park.id === selectedParkId) || null,
+    [parks, selectedParkId],
+  );
+
+  const selectedMapPoint = useMemo(() => {
+    if (selectedPark) {
+      return selectedPark;
+    }
+
+    if (formData.targetLatitude !== null && formData.targetLongitude !== null) {
+      return {
+        id: 'selected-form-point',
+        name: formData.location.trim() || 'Local selecionado',
+        latitude: formData.targetLatitude,
+        longitude: formData.targetLongitude,
+      };
+    }
+
+    return null;
+  }, [formData.location, formData.targetLatitude, formData.targetLongitude, selectedPark]);
+
+  const mapPreviewFit = useMemo(() => {
+    if (userLocation) {
+      if (selectedMapPoint) {
+        const midpoint = getMidpoint(
+          userLocation.latitude,
+          userLocation.longitude,
+          selectedMapPoint.latitude,
+          selectedMapPoint.longitude,
+        );
+        const distance = calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          selectedMapPoint.latitude,
+          selectedMapPoint.longitude,
+        );
+
+        return {
+          center: midpoint,
+          zoom: getMapZoomForDistanceKm(Math.max(distance, radius)),
+        };
+      }
+
+      return {
+        center: {
+          latitude: userLocation.latitude,
+          longitude: userLocation.longitude,
+        },
+        zoom: getZoomFromRadius(radius),
+      };
+    }
+
+    if (selectedMapPoint) {
+      return {
+        center: {
+          latitude: selectedMapPoint.latitude,
+          longitude: selectedMapPoint.longitude,
+        },
+        zoom: getZoomFromRadius(radius),
+      };
+    }
+
+    return null;
+  }, [radius, selectedMapPoint, userLocation]);
+
+  const mapPreviewUrl = useMemo(() => {
+    const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+    if (!googleMapsApiKey || !mapPreviewFit) {
+      return null;
+    }
+
+    const center = `${mapPreviewFit.center.latitude},${mapPreviewFit.center.longitude}`;
+    const markers = [
+      userLocation ? `markers=size:mid|color:0x2E8B7A|label:U|${userLocation.latitude},${userLocation.longitude}` : null,
+      selectedMapPoint ? `markers=size:mid|color:0xE53935|label:P|${selectedMapPoint.latitude},${selectedMapPoint.longitude}` : null,
+    ].filter((marker): marker is string => Boolean(marker));
+
+    const style = [
+      'feature:poi|visibility:off',
+      'feature:transit|visibility:off',
+      'feature:landscape|element:geometry|color:0xf4f1ea',
+      'feature:water|element:geometry|color:0xd9edf5',
+      'feature:road|element:geometry|color:0xffffff',
+    ];
+
+    const radiusCircle = buildCirclePath(mapPreviewFit.center.latitude, mapPreviewFit.center.longitude, Math.max(radius, 2));
+
+    const visiblePoints = [
+      userLocation ? `${userLocation.latitude},${userLocation.longitude}` : null,
+      selectedMapPoint ? `${selectedMapPoint.latitude},${selectedMapPoint.longitude}` : null,
+    ].filter((value): value is string => Boolean(value));
+
+    return `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(center)}&zoom=${mapPreviewFit.zoom}&size=900x220&scale=2&maptype=roadmap${
+      style.map((item) => `&style=${encodeURIComponent(item)}`).join('')
+    }&path=${encodeURIComponent(`fillcolor:0x1B8F5A22|color:0x1B8F5A88|weight:2|${radiusCircle}`)}${
+      markers.length > 0 ? `&${markers.map((marker) => encodeURIComponent(marker)).join('&')}` : ''
+    }${visiblePoints.length > 0 ? `&visible=${visiblePoints.map((point) => encodeURIComponent(point)).join('|')}` : ''}&key=${encodeURIComponent(googleMapsApiKey)}`;
+  }, [mapPreviewFit, radius, selectedMapPoint, userLocation]);
 
   const nearbyParksSorted = useMemo(() => {
     if (!userLocation) return parks.slice(0, 8);
@@ -240,6 +395,10 @@ export default function CreateEventScreen() {
       }))
       .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
   }, [parks, userLocation]);
+
+  const displayParks = loadingParks
+    ? Array.from({ length: 6 }, (_, index) => ({ id: `loading-park-${index}`, isLoading: true as const }))
+    : nearbyParksSorted.slice(0, 8);
 
   const selectMeetingPoint = (name: string, latitude: number, longitude: number, parkId?: string) => {
     setFormData((prev) => ({
@@ -325,6 +484,7 @@ export default function CreateEventScreen() {
       targetLatitude: null,
       targetLongitude: null,
     }));
+    setSelectedParkId(null);
 
     if (locationSearchDebounceRef.current) {
       clearTimeout(locationSearchDebounceRef.current);
@@ -352,6 +512,7 @@ export default function CreateEventScreen() {
     }));
     setManualLatitude(suggestion.latitude.toFixed(6));
     setManualLongitude(suggestion.longitude.toFixed(6));
+    setSelectedParkId(null);
     setShowLocationSuggestions(false);
   };
 
@@ -555,29 +716,18 @@ export default function CreateEventScreen() {
                 <Text style={styles.pointAction}>Selecionar</Text>
               </TouchableOpacity>
 
-              { (nearbyParksSorted && nearbyParksSorted.length > 0 ? nearbyParksSorted.slice(0,8) : recommendedParks).length === 0 ? (
+              {displayParks.length === 0 ? (
                 <View style={styles.emptyPointCard}>
-                  <Text style={styles.emptyPointText}>{loadingParks ? 'A carregar parques...' : 'Sem parques próximos para este raio.'}</Text>
-                  {!loadingParks && (
-                    <TouchableOpacity
-                      style={[styles.manualButton, { marginTop: 10 }]}
-                      onPress={() => {
-                        // expand search area to nearby surroundings
-                        setRadius(50);
-                        void fetchNearbyParks(50);
-                      }}
-                    >
-                      <Text style={styles.manualButtonText}>Mostrar parques nos arredores</Text>
-                    </TouchableOpacity>
-                  )}
+                  <Text style={styles.emptyPointText}>Sem parques próximos para este raio.</Text>
                 </View>
               ) : (
-                (nearbyParksSorted && nearbyParksSorted.length > 0 ? nearbyParksSorted.slice(0,8) : recommendedParks).map((park) => {
-                  const distance = userLocation
-                    ? calculateDistance(userLocation.latitude, userLocation.longitude, park.latitude, park.longitude)
+                displayParks.map((park) => {
+                  const realPark = 'isLoading' in park ? null : park;
+                  const distance = realPark && userLocation
+                    ? calculateDistance(userLocation.latitude, userLocation.longitude, realPark.latitude, realPark.longitude)
                     : null;
 
-                  const isSelected = selectedParkId === park.id;
+                  const isSelected = realPark ? selectedParkId === realPark.id : false;
 
                   return (
                     <TouchableOpacity
@@ -585,20 +735,76 @@ export default function CreateEventScreen() {
                       style={[
                         styles.pointCard,
                         isSelected && { borderColor: '#2E8B7A', backgroundColor: '#EAF6F3' },
+                        loadingParks && styles.pointCardLoading,
                       ]}
-                      onPress={() => selectMeetingPoint(park.name, park.latitude, park.longitude, park.id)}
+                      disabled={loadingParks || !realPark}
+                      onPress={() => {
+                        if (!realPark) {
+                          return;
+                        }
+                        selectMeetingPoint(realPark.name, realPark.latitude, realPark.longitude, realPark.id);
+                      }}
                     >
-                      <View style={styles.pointIcon}>
-                        <FontAwesome5 name="tree" size={13} color="#57B2A1" />
-                      </View>
-                      <Text style={styles.pointTitle}>{park.name}</Text>
-                      <Text style={styles.pointMeta}>{distance ? `${distance.toFixed(1)} km` : 'Parque recomendado'}</Text>
-                      <Text style={styles.pointAction}>{isSelected ? 'Selecionado' : 'Selecionar'}</Text>
+                      {loadingParks ? (
+                        <>
+                          <View style={styles.pointIcon}>
+                            <ActivityIndicator size="small" color="#2E8B7A" />
+                          </View>
+                          <Text style={styles.pointTitle}>A carregar...</Text>
+                          <Text style={styles.pointMeta}>A atualizar resultados</Text>
+                        </>
+                      ) : (
+                        <>
+                          <View style={styles.pointIcon}>
+                            <FontAwesome5 name="tree" size={13} color="#57B2A1" />
+                          </View>
+                          <Text style={styles.pointTitle}>{realPark?.name}</Text>
+                          <Text style={styles.pointMeta}>{distance ? `${distance.toFixed(1)} km` : 'Parque recomendado'}</Text>
+                          <Text style={styles.pointAction}>{isSelected ? 'Selecionado' : 'Selecionar'}</Text>
+                        </>
+                      )}
                     </TouchableOpacity>
                   );
                 })
               )}
             </ScrollView>
+
+            <View style={styles.mapPreviewCard}>
+              <View style={styles.mapPreviewHeaderRow}>
+                <View>
+                  <Text style={styles.mapPreviewTitle}>Mapa dos parques</Text>
+                  <Text style={styles.mapPreviewSubtitle}>
+                    {selectedPark
+                      ? `Centrado em ${selectedPark.name}`
+                      : userLocation
+                        ? 'Centrado na tua localização atual'
+                        : 'A localizar a tua posição'}
+                  </Text>
+                </View>
+                {loadingParks && (
+                  <View style={styles.mapLoadingBadge}>
+                    <ActivityIndicator size="small" color="#2E8B7A" />
+                    <Text style={styles.mapLoadingBadgeText}>A carregar novos mapas</Text>
+                  </View>
+                )}
+              </View>
+
+              {mapPreviewUrl ? (
+                <View style={styles.mapPreviewImageWrap}>
+                  <Image source={{ uri: mapPreviewUrl }} style={styles.mapPreviewImage} resizeMode="cover" />
+                  {loadingParks && <View style={styles.mapPreviewOverlay} />}
+                </View>
+              ) : (
+                <View style={styles.mapPreviewFallback}>
+                  <Text style={styles.mapPreviewFallbackText}>Define a chave do Google Maps para ver o mapa.</Text>
+                </View>
+              )}
+
+              {selectedPark && (
+                <Text style={styles.mapPreviewSelectedText}>Parque selecionado: {selectedPark.name}</Text>
+              )}
+            </View>
+
           </View>
 
           <View style={styles.section}>
@@ -880,6 +1086,10 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 6,
   },
+  pointCardLoading: {
+    opacity: 0.82,
+    backgroundColor: '#F4F0E7',
+  },
   pointIcon: {
     width: 32,
     height: 32,
@@ -944,6 +1154,81 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   emptyPointText: {
+    color: '#8B837A',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  mapPreviewCard: {
+    marginTop: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#D6CEC3',
+    backgroundColor: '#FBF8F2',
+    padding: 12,
+    gap: 8,
+  },
+  mapPreviewHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  mapPreviewTitle: {
+    color: '#5C4A3D',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  mapPreviewSubtitle: {
+    color: '#7E776F',
+    fontSize: 11,
+    marginTop: -4,
+  },
+  mapPreviewImage: {
+    width: '100%',
+    height: 170,
+    borderRadius: 14,
+    backgroundColor: '#EDE6D9',
+  },
+  mapPreviewImageWrap: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  mapPreviewOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  mapLoadingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#EAF6F3',
+    borderWidth: 1,
+    borderColor: '#CBE7E0',
+  },
+  mapLoadingBadgeText: {
+    color: '#2E8B7A',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  mapPreviewSelectedText: {
+    color: '#2E8B7A',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  mapPreviewFallback: {
+    width: '100%',
+    minHeight: 170,
+    borderRadius: 14,
+    backgroundColor: '#F2ECE0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  mapPreviewFallbackText: {
     color: '#8B837A',
     fontSize: 12,
     textAlign: 'center',
