@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   ActivityIndicator,
+  Linking,
   KeyboardAvoidingView,
   Platform,
   Image,
@@ -51,13 +52,62 @@ type LocationSuggestion = {
   longitude: number;
 };
 
-const RADIUS_OPTIONS = [5, 10, 25, 50];
+const RADIUS_OPTIONS = [1, 3, 5, 8];
+const USER_MAP_ICON_URL = 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png';
+const PARK_MAP_ICON_URL = 'https://maps.google.com/mapfiles/ms/icons/green-dot.png';
 
 const getZoomFromRadius = (radiusKm: number) => {
+  if (radiusKm <= 1) return 16;
+  if (radiusKm <= 3) return 15;
   if (radiusKm <= 5) return 14;
-  if (radiusKm <= 10) return 13;
-  if (radiusKm <= 25) return 12;
-  return 11;
+  if (radiusKm <= 8) return 13;
+  return 12;
+};
+
+const getZoomFromBounds = (latitudeDelta: number, longitudeDelta: number) => {
+  const span = Math.max(latitudeDelta, longitudeDelta);
+
+  if (span <= 0.01) return 15;
+  if (span <= 0.03) return 14;
+  if (span <= 0.06) return 13;
+  if (span <= 0.12) return 12;
+  if (span <= 0.25) return 11;
+  if (span <= 0.5) return 10;
+  return 9;
+};
+
+const buildMarker = ({
+  latitude,
+  longitude,
+  iconUrl,
+  color,
+  label,
+  size = 'mid',
+}: {
+  latitude: number;
+  longitude: number;
+  iconUrl?: string;
+  color?: string;
+  label?: string;
+  size?: 'tiny' | 'mid' | 'small';
+}) => {
+  const markerParts: string[] = [];
+
+  if (iconUrl) {
+    markerParts.push(`icon:${iconUrl}`, 'anchor:center');
+  } else {
+    markerParts.push(`size:${size}`);
+    if (color) {
+      markerParts.push(`color:${color}`);
+    }
+    if (label) {
+      markerParts.push(`label:${label}`);
+    }
+  }
+
+  markerParts.push(`${latitude},${longitude}`);
+
+  return markerParts.join('|');
 };
 
 const buildCirclePath = (latitude: number, longitude: number, radiusKm: number) => {
@@ -101,21 +151,6 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return earthRadiusKm * c;
 };
 
-const getMapZoomForDistanceKm = (distanceKm: number) => {
-  if (distanceKm <= 1) return 15;
-  if (distanceKm <= 2.5) return 14;
-  if (distanceKm <= 5) return 13;
-  if (distanceKm <= 10) return 12;
-  if (distanceKm <= 25) return 11;
-  if (distanceKm <= 50) return 10;
-  return 9;
-};
-
-const getMidpoint = (lat1: number, lon1: number, lat2: number, lon2: number) => ({
-  latitude: (lat1 + lat2) / 2,
-  longitude: (lon1 + lon2) / 2,
-});
-
 export default function CreateEventScreen() {
   const router = useRouter();
   const { activeProfile } = useActiveProfile();
@@ -138,6 +173,7 @@ export default function CreateEventScreen() {
   const [manualLatitude, setManualLatitude] = useState('');
   const [manualLongitude, setManualLongitude] = useState('');
   const [selectedParkId, setSelectedParkId] = useState<string | null>(null);
+  const [mapPreviewLoading, setMapPreviewLoading] = useState(true);
   const locationSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [formData, setFormData] = useState<FormState>({
@@ -305,43 +341,31 @@ export default function CreateEventScreen() {
   }, [formData.location, formData.targetLatitude, formData.targetLongitude, selectedPark]);
 
   const mapPreviewFit = useMemo(() => {
-    if (userLocation) {
-      if (selectedMapPoint) {
-        const midpoint = getMidpoint(
-          userLocation.latitude,
-          userLocation.longitude,
-          selectedMapPoint.latitude,
-          selectedMapPoint.longitude,
-        );
-        const distance = calculateDistance(
-          userLocation.latitude,
-          userLocation.longitude,
-          selectedMapPoint.latitude,
-          selectedMapPoint.longitude,
-        );
+    const mapPoints = [userLocation, selectedMapPoint].filter(
+      (point): point is { latitude: number; longitude: number } => Boolean(point),
+    );
 
-        return {
-          center: midpoint,
-          zoom: getMapZoomForDistanceKm(Math.max(distance, radius)),
-        };
-      }
+    if (mapPoints.length > 0) {
+      const latitudes = mapPoints.map((point) => point.latitude);
+      const longitudes = mapPoints.map((point) => point.longitude);
+      const centerLatitude = (Math.min(...latitudes) + Math.max(...latitudes)) / 2;
+      const centerLongitude = (Math.min(...longitudes) + Math.max(...longitudes)) / 2;
+      const latitudeDelta = Math.max(...latitudes) - Math.min(...latitudes);
+      const longitudeDelta = Math.max(...longitudes) - Math.min(...longitudes);
+
+      const padding = Math.max(latitudeDelta, longitudeDelta);
 
       return {
         center: {
-          latitude: userLocation.latitude,
-          longitude: userLocation.longitude,
+          latitude: centerLatitude,
+          longitude: centerLongitude,
         },
-        zoom: getZoomFromRadius(radius),
-      };
-    }
-
-    if (selectedMapPoint) {
-      return {
-        center: {
-          latitude: selectedMapPoint.latitude,
-          longitude: selectedMapPoint.longitude,
-        },
-        zoom: getZoomFromRadius(radius),
+        zoom:
+          mapPoints.length === 1
+            ? getZoomFromRadius(radius)
+            : getZoomFromBounds(latitudeDelta, longitudeDelta),
+        visiblePoints: mapPoints.map((point) => `${point.latitude},${point.longitude}`),
+        padding,
       };
     }
 
@@ -356,9 +380,21 @@ export default function CreateEventScreen() {
     }
 
     const center = `${mapPreviewFit.center.latitude},${mapPreviewFit.center.longitude}`;
-    const markers = [
-      userLocation ? `markers=size:mid|color:0x2E8B7A|label:U|${userLocation.latitude},${userLocation.longitude}` : null,
-      selectedMapPoint ? `markers=size:mid|color:0xE53935|label:P|${selectedMapPoint.latitude},${selectedMapPoint.longitude}` : null,
+    const markerParams = [
+      userLocation
+        ? buildMarker({
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude,
+            iconUrl: USER_MAP_ICON_URL,
+          })
+        : null,
+      selectedMapPoint
+        ? buildMarker({
+            latitude: selectedMapPoint.latitude,
+            longitude: selectedMapPoint.longitude,
+            iconUrl: PARK_MAP_ICON_URL,
+          })
+        : null,
     ].filter((marker): marker is string => Boolean(marker));
 
     const style = [
@@ -370,18 +406,43 @@ export default function CreateEventScreen() {
     ];
 
     const radiusCircle = buildCirclePath(mapPreviewFit.center.latitude, mapPreviewFit.center.longitude, Math.max(radius, 2));
-
-    const visiblePoints = [
-      userLocation ? `${userLocation.latitude},${userLocation.longitude}` : null,
-      selectedMapPoint ? `${selectedMapPoint.latitude},${selectedMapPoint.longitude}` : null,
-    ].filter((value): value is string => Boolean(value));
+    const visiblePoints = mapPreviewFit.visiblePoints;
 
     return `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(center)}&zoom=${mapPreviewFit.zoom}&size=900x220&scale=2&maptype=roadmap${
       style.map((item) => `&style=${encodeURIComponent(item)}`).join('')
     }&path=${encodeURIComponent(`fillcolor:0x1B8F5A22|color:0x1B8F5A88|weight:2|${radiusCircle}`)}${
-      markers.length > 0 ? `&${markers.map((marker) => encodeURIComponent(marker)).join('&')}` : ''
-    }${visiblePoints.length > 0 ? `&visible=${visiblePoints.map((point) => encodeURIComponent(point)).join('|')}` : ''}&key=${encodeURIComponent(googleMapsApiKey)}`;
+      markerParams.length > 0 ? `&${markerParams.map((marker) => `markers=${encodeURIComponent(marker)}`).join('&')}` : ''
+    }${visiblePoints.map((point) => `&visible=${encodeURIComponent(point)}`).join('')}` +
+      `&key=${encodeURIComponent(googleMapsApiKey)}`;
   }, [mapPreviewFit, radius, selectedMapPoint, userLocation]);
+  
+  const handleOpenMap = useCallback(async () => {
+    const destination = selectedMapPoint ?? userLocation;
+
+    if (!destination) {
+      return;
+    }
+
+    const destinationQuery = `${destination.latitude},${destination.longitude}`;
+    const url =
+      userLocation && selectedMapPoint
+        ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
+            `${userLocation.latitude},${userLocation.longitude}`,
+          )}&destination=${encodeURIComponent(destinationQuery)}&travelmode=walking`
+        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destinationQuery)}`;
+
+    const canOpen = await Linking.canOpenURL(url);
+    if (!canOpen) {
+      Alert.alert('Mapa', 'Nao foi possivel abrir o mapa externo neste dispositivo.');
+      return;
+    }
+
+    await Linking.openURL(url);
+  }, [selectedMapPoint, userLocation]);
+
+  useEffect(() => {
+    setMapPreviewLoading(true);
+  }, [mapPreviewUrl]);
 
   const nearbyParksSorted = useMemo(() => {
     if (!userLocation) return parks.slice(0, 8);
@@ -697,6 +758,7 @@ export default function CreateEventScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Pontos recomendados</Text>
             <Text style={styles.sectionSubtitle}>Seleciona um parque ou um ponto manual para guardar as coordenadas do evento.</Text>
+            <Text style={styles.parksDisclaimer}>Os parques sem nome podem ter uma localização menos precisa e menos segura. Confirma sempre o ponto antes de publicar.</Text>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardsRow}>
               <TouchableOpacity
@@ -781,22 +843,61 @@ export default function CreateEventScreen() {
                         : 'A localizar a tua posição'}
                   </Text>
                 </View>
-                {loadingParks && (
+                {(loadingParks || mapPreviewLoading) && (
                   <View style={styles.mapLoadingBadge}>
                     <ActivityIndicator size="small" color="#2E8B7A" />
-                    <Text style={styles.mapLoadingBadgeText}>A carregar novos mapas</Text>
+                    <Text style={styles.mapLoadingBadgeText}>{mapPreviewLoading ? 'A carregar mapa' : 'A carregar novos mapas'}</Text>
                   </View>
                 )}
+              </View>
+              
+              <TouchableOpacity
+                style={[
+                  styles.openMapButton,
+                  !selectedMapPoint && !userLocation && styles.openMapButtonDisabled,
+                ]}
+                onPress={handleOpenMap}
+                disabled={!selectedMapPoint && !userLocation}
+              >
+                <View style={styles.openMapIconWrap}>
+                  <FontAwesome5 name="route" size={11} color="#2E8B7A" />
+                </View>
+                <Text style={styles.openMapButtonText}>Ver direções</Text>
+              </TouchableOpacity>
+
+              <View style={styles.mapLegendRow}>
+                <View style={styles.mapLegendItem}>
+                  <View style={[styles.mapLegendDot, styles.mapLegendDotUser]} />
+                  <Text style={styles.mapLegendText}>Tu</Text>
+                </View>
+                <View style={styles.mapLegendItem}>
+                  <View style={[styles.mapLegendDot, styles.mapLegendDotPark]} />
+                  <Text style={styles.mapLegendText}>Ponto do evento</Text>
+                </View>
               </View>
 
               {mapPreviewUrl ? (
                 <View style={styles.mapPreviewImageWrap}>
-                  <Image source={{ uri: mapPreviewUrl }} style={styles.mapPreviewImage} resizeMode="cover" />
-                  {loadingParks && <View style={styles.mapPreviewOverlay} />}
+                  <Image
+                    source={{ uri: mapPreviewUrl }}
+                    style={styles.mapPreviewImage}
+                    resizeMode="cover"
+                    onLoadStart={() => setMapPreviewLoading(true)}
+                    onLoadEnd={() => setMapPreviewLoading(false)}
+                    onError={() => setMapPreviewLoading(false)}
+                  />
+                  {(loadingParks || mapPreviewLoading) && <View style={styles.mapPreviewOverlay} />}
                 </View>
               ) : (
                 <View style={styles.mapPreviewFallback}>
-                  <Text style={styles.mapPreviewFallbackText}>Define a chave do Google Maps para ver o mapa.</Text>
+                  {(loadingParks || mapPreviewLoading) ? (
+                    <>
+                      <ActivityIndicator size="small" color="#2E8B7A" />
+                      <Text style={[styles.mapPreviewFallbackText, { marginTop: 10 }]}>A carregar mapa</Text>
+                    </>
+                  ) : (
+                    <Text style={styles.mapPreviewFallbackText}>Define a chave do Google Maps para ver o mapa.</Text>
+                  )}
                 </View>
               )}
 
@@ -1048,6 +1149,17 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     marginTop: -4,
   },
+  parksDisclaimer: {
+    color: '#9A6B2F',
+    fontSize: 11,
+    lineHeight: 16,
+    backgroundColor: '#FFF6E7',
+    borderWidth: 1,
+    borderColor: '#F0D7A8',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   radiusRow: {
     flexDirection: 'row',
     gap: 8,
@@ -1216,6 +1328,64 @@ const styles = StyleSheet.create({
   },
   mapPreviewSelectedText: {
     color: '#2E8B7A',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  openMapButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBE7E0',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  openMapButtonDisabled: {
+    opacity: 0.52,
+  },
+  openMapIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EAF6F3',
+  },
+  openMapButtonText: {
+    color: '#2E8B7A',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  mapLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  mapLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  mapLegendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  mapLegendDotUser: {
+    backgroundColor: '#3B82F6',
+  },
+  mapLegendDotPark: {
+    backgroundColor: '#22A55A',
+  },
+  mapLegendText: {
+    color: '#7E776F',
     fontSize: 11,
     fontWeight: '700',
   },
