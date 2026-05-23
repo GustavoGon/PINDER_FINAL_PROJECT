@@ -171,6 +171,10 @@ export default function GruposEventos() {
   const [joinedPetIds, setJoinedPetIds] = useState<Set<string>>(new Set());
   const radiusRef = useRef(radius);
 
+  const [selectedEventDetail, setSelectedEventDetail] = useState<EventItem | null>(null);
+  const [showEventDetailModal, setShowEventDetailModal] = useState(false);
+  const [eventDetailLoading, setEventDetailLoading] = useState(false);
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -562,6 +566,25 @@ export default function GruposEventos() {
           .filter((petId): petId is string => Boolean(petId)) ?? [],
       ),
     );
+  }, []);
+
+  const handleOpenEventDetails = useCallback(async (eventItem: EventItem) => {
+    try {
+      setEventDetailLoading(true);
+      const response = await fetch(`${API_URL}/events/${eventItem.event_id}`);
+      if (!response.ok) {
+        throw new Error('Nao foi possivel carregar o evento');
+      }
+
+      const detail: EventItem = await response.json();
+      setSelectedEventDetail(detail);
+      setShowEventDetailModal(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao carregar evento';
+      Alert.alert('Erro', message);
+    } finally {
+      setEventDetailLoading(false);
+    }
   }, []);
 
   const handleOpenJoinModal = async (eventItem: EventItem) => {
@@ -969,16 +992,18 @@ export default function GruposEventos() {
               )}
 
               {filteredEvents.slice(0, 4).map((event) => (
-                <View
+                <TouchableOpacity
                   key={event.event_id}
                   style={[
                     styles.previewMarker,
                     styles.previewEventMarker,
                     buildPreviewPoint(event.latitude, event.longitude),
                   ]}
+                  onPress={() => handleOpenEventDetails(event)}
+                  activeOpacity={0.8}
                 >
                   <FontAwesome5 name="paw" size={12} color="#FFFFFF" />
-                </View>
+                </TouchableOpacity>
               ))}
 
               {parks.slice(0, 8).map((park) => (
@@ -1013,16 +1038,18 @@ export default function GruposEventos() {
               )}
 
               {filteredEvents.slice(0, 6).map((event) => (
-                <View
+                <TouchableOpacity
                   key={event.event_id}
                   style={[
                     styles.previewMarker,
                     styles.previewEventMarker,
                     buildPreviewPoint(event.latitude, event.longitude),
                   ]}
+                  onPress={() => handleOpenEventDetails(event)}
+                  activeOpacity={0.8}
                 >
                   <FontAwesome5 name="paw" size={12} color="#FFFFFF" />
-                </View>
+                </TouchableOpacity>
               ))}
 
               {parks.slice(0, 6).map((park) => (
@@ -1572,6 +1599,80 @@ export default function GruposEventos() {
                   </View>
                 )}
               />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de detalhes do evento (aberto ao clicar num marcador) */}
+      <Modal
+        visible={showEventDetailModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => {
+          setShowEventDetailModal(false);
+          setSelectedEventDetail(null);
+        }}
+      >
+        <View style={styles.attendeesOverlay}>
+          <View style={[styles.attendeesCard, { maxHeight: '78%' }]}>
+            <View style={[styles.attendeesHeader, { marginBottom: 8 }]}>
+              <Text style={styles.attendeesTitle}>Detalhes do evento</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowEventDetailModal(false);
+                  setSelectedEventDetail(null);
+                }}
+              >
+                <FontAwesome5 name="times" size={18} color="#8B837A" />
+              </TouchableOpacity>
+            </View>
+
+            {eventDetailLoading ? (
+              <View style={styles.attendeesLoading}>
+                <ActivityIndicator size="small" color="#57B2A1" />
+                <Text style={styles.attendeesLoadingText}>A carregar evento...</Text>
+              </View>
+            ) : selectedEventDetail ? (
+              <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
+                {selectedEventDetail.image ? (
+                  <Image source={{ uri: selectedEventDetail.image }} style={{ width: '100%', height: 160, borderRadius: 12, marginBottom: 10 }} />
+                ) : null}
+
+                <Text style={styles.joinEventName}>{selectedEventDetail.title}</Text>
+                <Text style={styles.joinEventMeta}>{formatEventDate(selectedEventDetail.starts_at)}</Text>
+                <Text style={styles.joinEventMeta}>{selectedEventDetail.location}</Text>
+                <Text style={styles.joinEventMeta}>{selectedEventDetail.attendee_count} inscritos</Text>
+                {selectedEventDetail.description ? (
+                  <Text style={[styles.joinEventMeta, { marginTop: 8 }]}>{selectedEventDetail.description}</Text>
+                ) : null}
+
+                <View style={{ marginTop: 12, flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    style={[styles.joinButton, { flex: 1 }]}
+                    onPress={() => {
+                      setShowEventDetailModal(false);
+                      handleOpenJoinModal(selectedEventDetail);
+                    }}
+                  >
+                    <Text style={styles.joinButtonText}>Inscrever pet</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.petsButton, { flex: 1 }]}
+                    onPress={() => {
+                      setShowEventDetailModal(false);
+                      handleOpenAttendees(selectedEventDetail.event_id, selectedEventDetail.title);
+                    }}
+                  >
+                    <Text style={styles.petsButtonText}>Inscritos</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            ) : (
+              <View style={styles.attendeesEmpty}>
+                <Text style={styles.attendeesEmptyText}>Detalhes indisponíveis.</Text>
+              </View>
             )}
           </View>
         </View>
