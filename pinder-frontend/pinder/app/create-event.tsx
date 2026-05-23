@@ -87,6 +87,7 @@ export default function CreateEventScreen() {
   const [useManualCoordinates, setUseManualCoordinates] = useState(false);
   const [manualLatitude, setManualLatitude] = useState('');
   const [manualLongitude, setManualLongitude] = useState('');
+  const [selectedParkId, setSelectedParkId] = useState<string | null>(null);
   const locationSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [formData, setFormData] = useState<FormState>({
@@ -150,14 +151,15 @@ export default function CreateEventScreen() {
     getLocation();
   }, []);
 
-  const fetchNearbyParks = useCallback(async () => {
+  const fetchNearbyParks = useCallback(async (overrideRadiusKm?: number) => {
     if (!userLocation) {
       return;
     }
 
     try {
       setLoadingParks(true);
-      const radiusMeters = Math.min(radius * 1000, 50000);
+      const effectiveRadiusKm = typeof overrideRadiusKm === 'number' && overrideRadiusKm > 0 ? overrideRadiusKm : radius;
+      const radiusMeters = Math.min(effectiveRadiusKm * 1000, 50000);
       const query = `[out:json][timeout:15];(
         node["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
         way["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
@@ -172,9 +174,17 @@ export default function CreateEventScreen() {
 
       const response = await fetch('https://overpass-api.de/api/interpreter', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          // Overpass prefers a descriptive User-Agent/contact so add one to reduce chance of being blocked
+          'User-Agent': 'PinderApp/1.0 (+https://pinder.app)',
+          Accept: 'application/json',
+        },
         body: `data=${encodeURIComponent(query)}`,
       });
+
+      // Debugging: log status for diagnosis when no parks are found during QA
+      console.debug('[fetchNearbyParks] Overpass status', response.status, 'ok?', response.ok);
 
       if (!response.ok) {
         setParks([]);
@@ -182,6 +192,7 @@ export default function CreateEventScreen() {
       }
 
       const payload = await response.json();
+      console.debug('[fetchNearbyParks] elements found', Array.isArray(payload?.elements) ? payload.elements.length : 0);
       const mapped: ParkSpot[] = (payload.elements || [])
         .map((element: any) => {
           const latitude = element.lat ?? element.center?.lat;
@@ -217,7 +228,20 @@ export default function CreateEventScreen() {
 
   const recommendedParks = useMemo(() => parks.slice(0, 6), [parks]);
 
-  const selectMeetingPoint = (name: string, latitude: number, longitude: number) => {
+  const nearbyParksSorted = useMemo(() => {
+    if (!userLocation) return parks.slice(0, 8);
+    return parks
+      .map((p) => ({
+        ...p,
+        distance:
+          typeof p.latitude === 'number' && typeof p.longitude === 'number'
+            ? calculateDistance(userLocation.latitude, userLocation.longitude, p.latitude, p.longitude)
+            : Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
+  }, [parks, userLocation]);
+
+  const selectMeetingPoint = (name: string, latitude: number, longitude: number, parkId?: string) => {
     setFormData((prev) => ({
       ...prev,
       location: name,
@@ -228,6 +252,7 @@ export default function CreateEventScreen() {
     setManualLongitude(longitude.toFixed(6));
     setLocationSuggestions([]);
     setShowLocationSuggestions(false);
+    setSelectedParkId(parkId ?? null);
   };
 
   const fetchLocationSuggestions = useCallback(async (query: string) => {
@@ -514,12 +539,12 @@ export default function CreateEventScreen() {
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardsRow}>
               <TouchableOpacity
-                style={styles.pointCard}
+                style={[styles.pointCard, !selectedParkId && { borderColor: '#2E8B7A', backgroundColor: '#EAF6F3' }]}
                 onPress={() => {
                   if (!userLocation) {
                     return;
                   }
-                  selectMeetingPoint('Local atual', userLocation.latitude, userLocation.longitude);
+                  selectMeetingPoint('Local atual', userLocation.latitude, userLocation.longitude, undefined);
                 }}
               >
                 <View style={[styles.pointIcon, styles.pointIconCurrent]}>
@@ -530,28 +555,45 @@ export default function CreateEventScreen() {
                 <Text style={styles.pointAction}>Selecionar</Text>
               </TouchableOpacity>
 
-              {recommendedParks.length === 0 ? (
+              { (nearbyParksSorted && nearbyParksSorted.length > 0 ? nearbyParksSorted.slice(0,8) : recommendedParks).length === 0 ? (
                 <View style={styles.emptyPointCard}>
                   <Text style={styles.emptyPointText}>{loadingParks ? 'A carregar parques...' : 'Sem parques próximos para este raio.'}</Text>
+                  {!loadingParks && (
+                    <TouchableOpacity
+                      style={[styles.manualButton, { marginTop: 10 }]}
+                      onPress={() => {
+                        // expand search area to nearby surroundings
+                        setRadius(50);
+                        void fetchNearbyParks(50);
+                      }}
+                    >
+                      <Text style={styles.manualButtonText}>Mostrar parques nos arredores</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               ) : (
-                recommendedParks.map((park) => {
+                (nearbyParksSorted && nearbyParksSorted.length > 0 ? nearbyParksSorted.slice(0,8) : recommendedParks).map((park) => {
                   const distance = userLocation
                     ? calculateDistance(userLocation.latitude, userLocation.longitude, park.latitude, park.longitude)
                     : null;
 
+                  const isSelected = selectedParkId === park.id;
+
                   return (
                     <TouchableOpacity
                       key={park.id}
-                      style={styles.pointCard}
-                      onPress={() => selectMeetingPoint(park.name, park.latitude, park.longitude)}
+                      style={[
+                        styles.pointCard,
+                        isSelected && { borderColor: '#2E8B7A', backgroundColor: '#EAF6F3' },
+                      ]}
+                      onPress={() => selectMeetingPoint(park.name, park.latitude, park.longitude, park.id)}
                     >
                       <View style={styles.pointIcon}>
                         <FontAwesome5 name="tree" size={13} color="#57B2A1" />
                       </View>
                       <Text style={styles.pointTitle}>{park.name}</Text>
                       <Text style={styles.pointMeta}>{distance ? `${distance.toFixed(1)} km` : 'Parque recomendado'}</Text>
-                      <Text style={styles.pointAction}>Selecionar</Text>
+                      <Text style={styles.pointAction}>{isSelected ? 'Selecionado' : 'Selecionar'}</Text>
                     </TouchableOpacity>
                   );
                 })
