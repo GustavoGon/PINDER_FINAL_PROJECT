@@ -6,6 +6,10 @@
   "type": "commonjs",
   "scripts": {
     "dev": "node server.js",
+    "build": "vite build",
     "start": "node server.js"
+  },
+  "devDependencies": {
+    "vite": "^8.0.14"
   }
 }

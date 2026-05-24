@@ -1,4 +1,5 @@
 const prisma = require("../prisma");
+const { sendPushNotification } = require("../services/notification.service");
 
 exports.createInteraction = async (req, res) => {
   try {
@@ -44,9 +45,35 @@ exports.createInteraction = async (req, res) => {
             },
             include: {
               pet1: { include: { owner: true } },
-              pet2: { include: { owner: true } }
-            }
+              pet2: { include: { owner: true } },
+            },
           });
+
+          // 🔔 notify pet1 owner
+          if (match.pet1.owner.push_token) {
+            await sendPushNotification({
+              pushToken: match.pet1.owner.push_token,
+              title: "🐾 Novo Match!",
+              body: `${match.pet2.name} fez match com ${match.pet1.name}!`,
+              data: {
+                type: "match",
+                matchId: match.match_id,
+              },
+            });
+          }
+
+          // 🔔 notify pet2 owner
+          if (match.pet2.owner.push_token) {
+            await sendPushNotification({
+              pushToken: match.pet2.owner.push_token,
+              title: "🐾 Novo Match!",
+              body: `${match.pet1.name} fez match com ${match.pet2.name}!`,
+              data: {
+                type: "match",
+                matchId: match.match_id,
+              },
+            });
+          }
 
           return res.status(201).json({
             message: "🎉 It's a match!",
