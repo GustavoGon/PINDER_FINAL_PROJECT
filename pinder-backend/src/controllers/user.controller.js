@@ -117,7 +117,7 @@ exports.loginUser = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const { user_id } = req.params;
-    const { username, dob, location, photo } = req.body;
+    const { username, dob, location, photo, isBanned } = req.body;
 
     // Construir objeto de dados dinamicamente (só enviar o que foi realmente alterado)
     const dataToUpdate = {};
@@ -126,6 +126,7 @@ exports.updateUser = async (req, res) => {
     if (dob !== undefined) dataToUpdate.dob = dob;
     if (location !== undefined) dataToUpdate.location = location;
     if (photo !== undefined) dataToUpdate.photo = photo;
+    if (isBanned !== undefined) dataToUpdate.isBanned = isBanned;
 
     // Atualiza o utilizador na base de dados
     const updatedUser = await prisma.user.update({

@@ -84,6 +84,28 @@ async function buildConversationEntry(match, currentUserId) {
   };
 }
 
+exports.getAllMessages = async (req, res) => {
+  try {
+    const messages = await prisma.message.findMany({
+      orderBy: { timestamp: "desc" },
+      include: {
+        sender: true,
+        match: {
+          include: {
+            pet1: { include: { owner: true, breed: true } },
+            pet2: { include: { owner: true, breed: true } },
+          },
+        },
+      },
+    });
+
+    res.json(messages);
+  } catch (error) {
+    console.error("Erro ao carregar mensagens:", error);
+    res.status(500).json({ error: "Erro ao carregar mensagens" });
+  }
+};
+
 // POST /messages/direct - Criar ou reutilizar uma conversa direta entre dois pets
 exports.getOrCreateDirectConversation = async (req, res) => {
   try {

@@ -3,6 +3,7 @@ const router = express.Router();
 
 const eventController = require("../controllers/event.controller");
 
+router.get("/", eventController.getAllEvents);
 router.post("/", eventController.createEvent);
 
 router.get("/recommendations", eventController.getRecommendedEvents);

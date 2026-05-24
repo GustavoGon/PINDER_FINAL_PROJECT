@@ -1,0 +1,11 @@
+{
+  "name": "pinder-admin",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Administrative web app for the Pinder platform.",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  }
+}

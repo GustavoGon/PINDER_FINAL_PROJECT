@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const messageController = require("../controllers/message.controller");
 
+router.get("/admin", messageController.getAllMessages);
 router.post("/direct", messageController.getOrCreateDirectConversation);
 router.get("/conversations/:userId", messageController.getConversations);
 router.get("/unread/:userId", messageController.getUnreadCounts);

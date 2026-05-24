@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pinder Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="background-sheen"></div>
+    <div class="background-grid"></div>
+
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">P</div>
+          <div>
+            <p class="eyebrow">Admin Console</p>
+            <h1>Pinder</h1>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Admin sections">
+          <button class="nav-item active" data-section="overview">Overview</button>
+          <button class="nav-item" data-section="users">Users</button>
+          <button class="nav-item" data-section="pets">Pets</button>
+          <button class="nav-item" data-section="matches">Matches</button>
+          <button class="nav-item" data-section="events">Events</button>
+          <button class="nav-item" data-section="groups">Groups</button>
+          <button class="nav-item" data-section="moderation">Moderation</button>
+        </nav>
+
+        <section class="sidebar-card">
+          <p class="eyebrow">Runtime</p>
+          <h2>Live data bridge</h2>
+          <label class="field-label" for="apiUrl">API base URL</label>
+          <input id="apiUrl" class="input" type="text" value="http://localhost:3000" />
+          <button id="syncApi" class="button button-primary">Try live sync</button>
+          <p class="small-note">
+            The app starts with seeded data and can try to hydrate from the existing backend routes.
+          </p>
+        </section>
+
+        <section class="sidebar-card accent-card">
+          <p class="eyebrow">Admin focus</p>
+          <h2>Moderation first</h2>
+          <p>
+            This view is tuned for user control, pet lifecycle, event oversight, match hygiene and
+            conversation health.
+          </p>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Pinder platform</p>
+            <h2>Operational dashboard for the admin team</h2>
+          </div>
+          <div class="topbar-actions">
+            <div class="search-wrap">
+              <input id="search" class="input search" type="search" placeholder="Search users, pets, events..." />
+            </div>
+            <div class="pill">Local mode</div>
+          </div>
+        </header>
+
+        <section id="kpiGrid" class="kpi-grid"></section>
+
+        <section class="content-grid">
+          <article class="panel panel-main">
+            <div id="sectionHeader" class="section-header"></div>
+            <div id="primaryContent"></div>
+          </article>
+
+          <aside class="panel panel-side">
+            <div id="insightHeader" class="section-header"></div>
+            <div id="insightContent"></div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

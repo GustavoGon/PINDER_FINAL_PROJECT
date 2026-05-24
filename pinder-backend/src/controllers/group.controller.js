@@ -204,6 +204,7 @@ exports.deleteGroup = async (req, res) => {
   try {
     const { group_id } = req.params;
     const { user_id } = req.body;
+    const forceDelete = req.body?.admin === true || req.query?.admin === "true";
 
     const group = await prisma.group.findUnique({
       where: { group_id }
@@ -213,7 +214,7 @@ exports.deleteGroup = async (req, res) => {
       return res.status(404).json({ error: "Grupo não encontrado" });
     }
 
-    if (group.created_by !== user_id) {
+    if (!forceDelete && group.created_by !== user_id) {
       return res.status(403).json({ error: "Apenas o criador pode deletar o grupo" });
     }
 

@@ -21,6 +21,11 @@ exports.getMatches = async (req, res) => {
       include: {
         pet1: { include: { owner: true } },
         pet2: { include: { owner: true } },
+        adopter: true,
+        messages: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
       },
     });
 
