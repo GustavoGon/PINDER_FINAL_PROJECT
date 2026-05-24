@@ -127,6 +127,7 @@ function normalizeMatch(match) {
     pet_1_id: match.pet_1_id,
     pet_2_id: match.pet_2_id,
     is_adoption: Boolean(match.is_adoption),
+    adopter_id: match.adopter_id || null,
     adopter_name: match.adopter_name || match.adopter?.username || null,
     unmatched: Boolean(match.unmatched),
     unmatched_by: match.unmatched_by || null,
@@ -264,6 +265,8 @@ async function fetchJson(url, label) {
 }
 
 async function bootstrapData() {
+  render();
+
   try {
     const errors = await hydrateFromApi();
     state.syncState = errors.length ? "partial" : "live";
@@ -373,6 +376,14 @@ function filteredMatches() {
   });
 }
 
+function getMatchTutorName(match) {
+  const adopter = match?.adopter_id
+    ? state.data.users.find((user) => user.user_id === match.adopter_id)
+    : null;
+
+  return match?.adopter_name || adopter?.username || adopter?.name || "Tutor";
+}
+
 function filteredEvents() {
   return state.data.events.filter((event) => {
     const queryMatch = [event.title, event.location, event.creatorName]
@@ -425,11 +436,6 @@ function activeStats() {
       delta: `${events.filter((event) => getEventStatus(event) === "upcoming").length} upcoming`,
     },
     {
-      label: "Groups",
-      value: groups.length,
-      delta: `${groups.reduce((sum, group) => sum + group.attendeeCount, 0)} total seats filled`,
-    },
-    {
       label: "Unread messages",
       value: unreadMessages,
       delta: `${state.data.messages.length} total messages`,
@@ -438,6 +444,21 @@ function activeStats() {
 }
 
 function renderKpis() {
+  if (state.syncState === "loading" && !state.data.users.length && !state.data.pets.length) {
+    kpiGrid.innerHTML = Array.from({ length: 6 })
+      .map(
+        () => `
+          <article class="kpi-card kpi-card-loading">
+            <div class="skeleton skeleton-line skeleton-label"></div>
+            <div class="skeleton skeleton-line skeleton-value"></div>
+            <div class="skeleton skeleton-line skeleton-delta"></div>
+          </article>
+        `,
+      )
+      .join("");
+    return;
+  }
+
   kpiGrid.innerHTML = activeStats()
     .map(
       (item) => `
@@ -489,108 +510,134 @@ function renderOverview() {
     ],
   );
 
-  primaryContent.innerHTML = `
-    <div class="card-grid">
-      <article class="entity-card featured">
-        <div class="entity-foot">
-          <div>
-            <p class="eyebrow">Priority queue</p>
-            <h4>Moderation and health checks</h4>
+  if (state.syncState === "loading" && !state.data.users.length && !state.data.pets.length) {
+    primaryContent.innerHTML = `
+      <div class="card-grid">
+        ${[1, 2, 3, 4]
+          .map(
+            () => `
+              <article class="entity-card entity-card-loading">
+                <div class="entity-foot">
+                  <div class="skeleton skeleton-line skeleton-label"></div>
+                  <div class="skeleton skeleton-pill"></div>
+                </div>
+                <div class="skeleton skeleton-line skeleton-title"></div>
+                <div class="skeleton skeleton-block"></div>
+                <div class="timeline">
+                  <div class="timeline-item skeleton-tile"></div>
+                  <div class="timeline-item skeleton-tile"></div>
+                  <div class="timeline-item skeleton-tile"></div>
+                </div>
+              </article>
+            `,
+          )
+          .join("")}
+      </div>
+    `;
+  } else {
+    primaryContent.innerHTML = `
+      <div class="card-grid">
+        <article class="entity-card featured">
+          <div class="entity-foot">
+            <div>
+              <p class="eyebrow">Priority queue</p>
+              <h4>Moderation and health checks</h4>
+            </div>
+            <span class="status ${state.data.users.some((user) => user.isBanned) ? "red" : "green"}">
+              ${state.data.users.some((user) => user.isBanned) ? "Needs review" : "Healthy"}
+            </span>
           </div>
-          <span class="status ${state.data.users.some((user) => user.isBanned) ? "red" : "green"}">
-            ${state.data.users.some((user) => user.isBanned) ? "Needs review" : "Healthy"}
-          </span>
-        </div>
-        <p>
-          Users flagged, cancelled events and unresolved match states should be reviewed before they
-          create support overhead.
-        </p>
-        <div class="timeline">
-          ${[
-            { title: "Banned users", value: state.data.users.filter((user) => user.isBanned).length, status: "red" },
-            { title: "Cancelled events", value: state.data.events.filter((event) => event.cancelled).length, status: "orange" },
-            { title: "Unmatched conversations", value: state.data.matches.filter((match) => match.unmatched).length, status: "blue" },
-          ]
+          <p>
+            Users flagged, cancelled events and unresolved match states should be reviewed before they
+            create support overhead.
+          </p>
+          <div class="timeline">
+            ${[
+              { title: "Banned users", value: state.data.users.filter((user) => user.isBanned).length, status: "red" },
+              { title: "Cancelled events", value: state.data.events.filter((event) => event.cancelled).length, status: "orange" },
+              { title: "Unmatched conversations", value: state.data.matches.filter((match) => match.unmatched).length, status: "blue" },
+            ]
+              .map(
+                (item) => `
+                  <div class="timeline-item">
+                    <strong>${item.title}</strong>
+                    <span class="status ${item.status}">${item.value}</span>
+                  </div>
+                `,
+              )
+              .join("")}
+          </div>
+        </article>
+
+        <article class="entity-card">
+          <div class="entity-foot">
+            <div>
+              <p class="eyebrow">Hot pets</p>
+              <h4>Pets currently open for adoption</h4>
+            </div>
+            <span class="tag green">${state.data.pets.filter((pet) => pet.forAdoption).length}</span>
+          </div>
+          ${hotPets
             .map(
-              (item) => `
+              (pet) => `
                 <div class="timeline-item">
-                  <strong>${item.title}</strong>
-                  <span class="status ${item.status}">${item.value}</span>
+                  <strong>${pet.name}</strong>
+                  <span class="muted">${pet.species} · ${pet.breed}</span>
+                  <span class="muted">Owner: ${pet.ownerName}</span>
                 </div>
               `,
             )
             .join("")}
-        </div>
-      </article>
+        </article>
 
-      <article class="entity-card">
-        <div class="entity-foot">
-          <div>
-            <p class="eyebrow">Hot pets</p>
-            <h4>Pets currently open for adoption</h4>
+        <article class="entity-card">
+          <div class="entity-foot">
+            <div>
+              <p class="eyebrow">Upcoming events</p>
+              <h4>Next event windows</h4>
+            </div>
+            <span class="tag blue">${upcomingEvents.length}</span>
           </div>
-          <span class="tag green">${state.data.pets.filter((pet) => pet.forAdoption).length}</span>
-        </div>
-        ${hotPets
-          .map(
-            (pet) => `
-              <div class="timeline-item">
-                <strong>${pet.name}</strong>
-                <span class="muted">${pet.species} · ${pet.breed}</span>
-                <span class="muted">Owner: ${pet.ownerName}</span>
-              </div>
-            `,
-          )
-          .join("")}
-      </article>
+          ${upcomingEvents
+            .map(
+              (event) => `
+                <div class="timeline-item">
+                  <strong>${event.title}</strong>
+                  <span class="muted">${formatDate(event.starts_at)} · ${event.location}</span>
+                  <span class="muted">${event.attendee_count}/${event.max_attendees || "?"} attendees</span>
+                </div>
+              `,
+            )
+            .join("")}
+        </article>
 
-      <article class="entity-card">
-        <div class="entity-foot">
-          <div>
-            <p class="eyebrow">Upcoming events</p>
-            <h4>Next event windows</h4>
+        <article class="entity-card">
+          <div class="entity-foot">
+            <div>
+              <p class="eyebrow">User attention</p>
+              <h4>Accounts that deserve a look</h4>
+            </div>
+            <span class="tag orange">${riskyUsers.length}</span>
           </div>
-          <span class="tag blue">${upcomingEvents.length}</span>
-        </div>
-        ${upcomingEvents
-          .map(
-            (event) => `
-              <div class="timeline-item">
-                <strong>${event.title}</strong>
-                <span class="muted">${formatDate(event.starts_at)} · ${event.location}</span>
-                <span class="muted">${event.attendee_count}/${event.max_attendees || "?"} attendees</span>
-              </div>
-            `,
-          )
-          .join("")}
-      </article>
-
-      <article class="entity-card">
-        <div class="entity-foot">
-          <div>
-            <p class="eyebrow">User attention</p>
-            <h4>Accounts that deserve a look</h4>
-          </div>
-          <span class="tag orange">${riskyUsers.length}</span>
-        </div>
-        ${riskyUsers
-          .map(
-            (user) => `
-              <div class="timeline-item">
-                <strong>${user.username}</strong>
-                <span class="muted">${user.email}</span>
-                <span class="muted">${user.isBanned ? "Banned" : "Low activity"}</span>
-              </div>
-            `,
-          )
-          .join("")}
-      </article>
-    </div>
-  `;
+          ${riskyUsers
+            .map(
+              (user) => `
+                <div class="timeline-item">
+                  <strong>${user.username}</strong>
+                  <span class="muted">${user.email}</span>
+                  <span class="muted">${user.isBanned ? "Banned" : "Low activity"}</span>
+                </div>
+              `,
+            )
+            .join("")}
+        </article>
+      </div>
+    `;
+  }
 
   insightHeader.innerHTML = renderHeader(
     "Admin playbook",
-    "The backend exposes reads for users, pets, matches, messages, events and groups, plus safe actions like cancel, unmatch and delete.",
+    "The backend exposes reads for users, pets, matches, messages and events, plus safe actions like cancel, unmatch and delete.",
     [{ label: state.syncState === "live" ? "Synced" : state.syncState === "partial" ? "Partial" : state.syncState === "loading" ? "Loading" : "Offline", className: state.syncState === "live" ? "green" : state.syncState === "partial" ? "orange" : state.syncState === "loading" ? "accent" : "red" }],
   );
 
@@ -603,7 +650,6 @@ function renderOverview() {
           <li><span>Pets</span><span>GET /pets, DELETE /pets/:id</span></li>
           <li><span>Matches</span><span>GET /matches, PUT /matches/:id</span></li>
           <li><span>Events</span><span>GET /events/:id, PATCH /events/:id/cancel</span></li>
-          <li><span>Groups</span><span>GET /groups, DELETE /groups/:id</span></li>
           <li><span>Messages</span><span>GET /messages/:matchId</span></li>
         </ul>
       </div>
@@ -613,7 +659,7 @@ function renderOverview() {
         <ul class="bullet-list">
           <li>Match state consistency for adoption conversations.</li>
           <li>Pets marked for adoption but without recent activity.</li>
-          <li>Cancelled or over-capacity events and groups.</li>
+          <li>Cancelled or over-capacity events.</li>
           <li>Banned users and accounts with no engagement.</li>
         </ul>
       </div>
@@ -683,35 +729,41 @@ function renderPets() {
 
   primaryContent.innerHTML = pets.length
     ? `
-      <div class="card-grid">
-        ${pets
-          .map(
-            (pet) => `
-              <article class="entity-card ${state.selected?.type === "pet" && state.selected.id === pet.pet_id ? "featured" : ""}" data-select='${JSON.stringify({ type: "pet", id: pet.pet_id })}'>
-                <img class="pet-thumb large" src="${pet.main_photo}" alt="${pet.name}" />
-                <div class="entity-foot">
-                  <div>
-                    <p class="eyebrow">${pet.species}</p>
-                    <h4>${pet.name}</h4>
-                  </div>
-                  <span class="status ${pet.forAdoption ? "green" : "orange"}">${pet.forAdoption ? "For adoption" : "Owned"}</span>
-                </div>
-                <p>${pet.breed} · ${pet.gender} · ${pet.size}</p>
-                <div class="meta-row">
-                  <span class="tag blue">${pet.ownerName}</span>
-                  <span class="tag">${pet.location}</span>
-                  <span class="tag">${getPetAgeLabel(pet.age)}</span>
-                </div>
-                <div class="meter"><span style="width: ${Math.min(100, pet.energy * 10)}%"></span></div>
-                <div class="button-row">
-                  <button class="button button-small" data-action="toggle-pet" data-id="${pet.pet_id}" data-entity="pet">Toggle adoption</button>
-                  <button class="button button-small button-danger" data-action="delete-pet" data-id="${pet.pet_id}" data-entity="pet">Delete pet</button>
-                </div>
-              </article>
-            `,
-          )
-          .join("")}
-      </div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Pet</th>
+            <th>Species</th>
+            <th>Breed</th>
+            <th>Status</th>
+            <th>Owner</th>
+            <th>Location</th>
+            <th>Age</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pets
+            .map(
+              (pet) => `
+                <tr class="row-clickable" data-select='${JSON.stringify({ type: "pet", id: pet.pet_id })}'>
+                  <td>
+                    <div class="stack">
+                      <strong>${pet.name}</strong>
+                      <span class="muted">Energy ${pet.energy}/10 · ${pet.gender} · ${pet.size}</span>
+                    </div>
+                  </td>
+                  <td>${pet.species}</td>
+                  <td>${pet.breed}</td>
+                  <td><span class="status ${pet.forAdoption ? "green" : "orange"}">${pet.forAdoption ? "Adoption" : "Owned"}</span></td>
+                  <td>${pet.ownerName}</td>
+                  <td>${pet.location}</td>
+                  <td>${getPetAgeLabel(pet.age)}</td>
+                </tr>
+              `,
+            )
+            .join("")}
+        </tbody>
+      </table>
     `
     : renderEmpty("No pets match the current filter.", "Try a broader search.");
 
@@ -723,10 +775,9 @@ function renderMatches() {
   const matches = filteredMatches();
 
   sectionHeader.innerHTML = renderHeader(
-    "Matches and conversations",
-    "A compact view of relationship state, adoption confirmations and stale conversations.",
+    "Matches",
+    "A compact view of matches that already happened, with a quick action to undo them if needed.",
     [
-      { label: `${matches.filter((match) => match.is_adoption).length} adoption chats`, className: "accent" },
       { label: `${matches.filter((match) => match.unmatched).length} closed`, className: "red" },
     ],
   );
@@ -745,12 +796,6 @@ function renderMatches() {
                   </div>
                   <span class="status ${match.unmatched ? "red" : match.is_adoption ? "green" : "blue"}">${match.unmatched ? "Unmatched" : match.is_adoption ? "Adoption" : "Open"}</span>
                 </div>
-                <p>${match.lastMessage}</p>
-                <div class="meta-row">
-                  <span class="tag">Adopter: ${match.adopter_name || "N/A"}</span>
-                  <span class="tag">Owner confirmation: ${match.adoption_confirmed_by_owner ? "Yes" : "No"}</span>
-                  <span class="tag">Adopter confirmation: ${match.adoption_confirmed_by_adopter ? "Yes" : "No"}</span>
-                </div>
                 <div class="button-row">
                   <button class="button button-small" data-action="select-match" data-id="${match.match_id}" data-entity="match">Inspect</button>
                   <button class="button button-small button-danger" data-action="unmatch" data-id="${match.match_id}" data-entity="match">Unmatch</button>
@@ -761,9 +806,9 @@ function renderMatches() {
           .join("")}
       </div>
     `
-    : renderEmpty("No matches found.", "Clear the search field to show all conversations.");
+    : renderEmpty("No matches found.", "Clear the search field to show all matches.");
 
-  insightHeader.innerHTML = renderHeader("Selected match", "Use this panel to review chat state and intervention options.", []);
+  insightHeader.innerHTML = renderHeader("Selected match", "Use this panel to review the match and undo it if needed.", []);
   insightContent.innerHTML = renderDetailPanel(state.data.matches.find((match) => match.match_id === state.selected?.id) || matches[0] || null, "match");
 }
 
@@ -904,7 +949,7 @@ function renderModeration() {
           <li>Prioritize banned accounts and abandoned adoption chats.</li>
           <li>Cancel over-capacity or stale events before they become support issues.</li>
           <li>Keep adoption conversations visible until both sides confirm.</li>
-          <li>Use delete with care on pets and groups because it is destructive.</li>
+          <li>Use delete with care on pets and events because it is destructive.</li>
         </ul>
       </div>
       <div class="detail-card">
@@ -970,17 +1015,97 @@ function renderDetailPanel(item, type) {
   }
 
   if (type === "match") {
+    const primaryPet = item.pet1?.name ? item.pet1 : item.pet2;
+    const secondaryPet = item.is_adoption ? primaryPet : item.pet2;
+    const adopterName = getMatchTutorName(item);
+    const tutorInitials = adopterName
+      .split(/[\s._-]+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "TU";
+
+    const renderMiniCard = ({ title, name, meta, image, imageAlt, initials, details }) => `
+      <div class="match-mini-card">
+        <div class="match-mini-head">
+          ${image
+            ? `<img class="pet-thumb" src="${image}" alt="${imageAlt}" />`
+            : `<div class="match-mini-avatar">${initials}</div>`}
+          <div class="match-mini-meta">
+            <p class="eyebrow">${title}</p>
+            <h4>${name}</h4>
+            <p>${meta}</p>
+          </div>
+        </div>
+        <ul class="detail-list">
+          ${details.map(([label, value]) => `<li><span>${label}</span><span>${value}</span></li>`).join("")}
+        </ul>
+      </div>
+    `;
+
+    const leftCard = item.is_adoption
+      ? renderMiniCard({
+          title: "Tutor",
+          name: adopterName,
+          meta: "Adoption contact",
+          initials: tutorInitials,
+          details: [
+            ["Role", "Tutor"],
+            ["Type", "Adoption"],
+          ],
+        })
+      : renderMiniCard({
+          title: "Pet 1",
+          name: item.pet1?.name || "Unknown",
+          meta: `${item.pet1?.species || "Unknown"} · ${item.pet1?.breed || "Unknown"}`,
+          image: item.pet1?.main_photo,
+          imageAlt: item.pet1?.name || "Pet 1",
+          initials: "P1",
+          details: [
+            ["Owner", item.pet1?.ownerName || "Unknown"],
+            ["Location", item.pet1?.location || "Unknown"],
+          ],
+        });
+
+    const rightCard = item.is_adoption
+      ? renderMiniCard({
+          title: "Pet",
+          name: primaryPet?.name || "Unknown",
+          meta: `${primaryPet?.species || "Unknown"} · ${primaryPet?.breed || "Unknown"}`,
+          image: primaryPet?.main_photo,
+          imageAlt: primaryPet?.name || "Pet",
+          initials: "PT",
+          details: [
+            ["Owner", primaryPet?.ownerName || "Unknown"],
+            ["Location", primaryPet?.location || "Unknown"],
+          ],
+        })
+      : renderMiniCard({
+          title: "Pet 2",
+          name: secondaryPet?.name || "Unknown",
+          meta: `${secondaryPet?.species || "Unknown"} · ${secondaryPet?.breed || "Unknown"}`,
+          image: secondaryPet?.main_photo,
+          imageAlt: secondaryPet?.name || "Pet 2",
+          initials: "P2",
+          details: [
+            ["Owner", secondaryPet?.ownerName || "Unknown"],
+            ["Location", secondaryPet?.location || "Unknown"],
+          ],
+        });
+
     return `
       <div class="detail-card">
-        <h4>${item.pet1.name} x ${item.pet2.name}</h4>
-        <p>${item.is_adoption ? "Adoption conversation" : "General match"}</p>
+        <h4>${item.is_adoption ? "Tutor x Pet" : "Pet x Pet"}</h4>
+        <p>${item.is_adoption ? "Adoption match" : "General match"}</p>
         <ul class="detail-list">
           <li><span>Status</span><span>${item.unmatched ? "Unmatched" : "Open"}</span></li>
-          <li><span>Adopter</span><span>${item.adopter_name || "N/A"}</span></li>
-          <li><span>Owner confirmed</span><span>${item.adoption_confirmed_by_owner ? "Yes" : "No"}</span></li>
-          <li><span>Adopter confirmed</span><span>${item.adoption_confirmed_by_adopter ? "Yes" : "No"}</span></li>
           <li><span>Last update</span><span>${formatDateTime(item.timestamp)}</span></li>
         </ul>
+        <div class="match-pair-grid">
+          ${leftCard}
+          ${rightCard}
+        </div>
         <div class="button-row">
           <button class="button button-small button-danger" data-action="unmatch" data-id="${item.match_id}" data-entity="match">Unmatch</button>
         </div>
@@ -1207,8 +1332,6 @@ function render() {
     renderMatches();
   } else if (state.section === "events") {
     renderEvents();
-  } else if (state.section === "groups") {
-    renderGroups();
   } else if (state.section === "moderation") {
     renderModeration();
   }
