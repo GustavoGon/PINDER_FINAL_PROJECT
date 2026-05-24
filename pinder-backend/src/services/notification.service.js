@@ -1,26 +1,26 @@
-import * as Notifications from "expo-notifications";
-import * as Device from "expo-device";
+const { Expo } = require("expo-server-sdk");
 
-export async function registerForPushNotifications() {
-  if (!Device.isDevice) {
-    return null;
+const expo = new Expo();
+
+async function sendPushNotification(expoPushToken, title, body) {
+  if (!Expo.isExpoPushToken(expoPushToken)) {
+    console.error("Invalid Expo push token");
+
+    return;
   }
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  const messages = [
+    {
+      to: expoPushToken,
+      sound: "default",
+      title,
+      body,
+    },
+  ];
 
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== "granted") {
-    const { status } = await Notifications.requestPermissionsAsync();
-
-    finalStatus = status;
-  }
-
-  if (finalStatus !== "granted") {
-    return null;
-  }
-
-  const tokenData = await Notifications.getExpoPushTokenAsync();
-
-  return tokenData.data;
+  await expo.sendPushNotificationsAsync(messages);
 }
+
+module.exports = {
+  sendPushNotification,
+};
