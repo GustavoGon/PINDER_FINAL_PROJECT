@@ -150,6 +150,7 @@ export default function GruposEventos() {
 
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
@@ -239,6 +240,14 @@ export default function GruposEventos() {
   }, [radius]);
 
   useEffect(() => {
+    const intervalId = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
     const getLocation = async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -306,6 +315,21 @@ export default function GruposEventos() {
       top: `${Math.max(8, Math.min(90, 50 + yRatio * 62))}%`,
     };
   };
+
+  const isEventVisibleOnMap = useCallback(
+    (event: EventItem) => {
+      const startsAt = new Date(event.starts_at).getTime();
+      if (Number.isNaN(startsAt)) {
+        return true;
+      }
+
+      const endsAt = event.ends_at ? new Date(event.ends_at).getTime() : null;
+      const visibilityCutoff = endsAt ?? startsAt;
+
+      return currentTime <= visibilityCutoff;
+    },
+    [currentTime],
+  );
 
   const fetchEvents = useCallback(async (fromPullToRefresh: boolean) => {
     if (!userLocation) {
@@ -476,11 +500,17 @@ export default function GruposEventos() {
   }, [events, searchTerm, radius, statusFilter, userLocation]);
 
   const futureEvents = useMemo(() => {
-    const now = new Date();
     return filteredEvents
-      .filter((event) => new Date(event.starts_at).getTime() >= now.getTime() - 60 * 1000)
+      .filter((event) => new Date(event.starts_at).getTime() >= currentTime - 60 * 1000)
       .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
-  }, [filteredEvents]);
+  }, [filteredEvents, currentTime]);
+
+  const visibleMapEvents = useMemo(
+    () => filteredEvents.filter((event) => isEventVisibleOnMap(event)),
+    [filteredEvents, isEventVisibleOnMap],
+  );
+
+  
 
   const recommendedParks = useMemo(() => parks.slice(0, 4), [parks]);
 
@@ -495,13 +525,15 @@ export default function GruposEventos() {
     const radiusCircle = buildCirclePath(mapRegion.latitude, mapRegion.longitude, radius);
     const markers = [
       userLocation ? `markers=color:0x2E8B7A|label:U|${userLocation.latitude},${userLocation.longitude}` : null,
-      ...filteredEvents.slice(0, 6).map(
+      ...visibleMapEvents.slice(0, 6).map(
         (event) => `markers=color:0xE87A4D|label:E|${event.latitude},${event.longitude}`,
       ),
-      ...parks.slice(0, 8).map((park) => `markers=color:0x57B2A1|label:P|${park.latitude},${park.longitude}`),
+      ...parks.slice(0, 8).map((park) => `markers=size:mid|color:0x1B8F5A|label:P|${park.latitude},${park.longitude}`),
     ].filter((marker): marker is string => Boolean(marker));
 
     const style = [
+      'feature:poi|visibility:off',
+      'feature:transit|visibility:off',
       'feature:poi.park|element:geometry|color:0xd6ead8',
       'feature:landscape|element:geometry|color:0xf4f1ea',
       'feature:water|element:geometry|color:0xd9edf5',
@@ -513,7 +545,7 @@ export default function GruposEventos() {
     }&path=${encodeURIComponent(`fillcolor:0x2E8B7A22|color:0x2E8B7A88|weight:2|${radiusCircle}`)}${
       markers.length > 0 ? `&${markers.map((marker) => encodeURIComponent(marker)).join('&')}` : ''
     }&key=${encodeURIComponent(googleMapsApiKey)}`;
-  }, [filteredEvents, mapRegion, parks, radius, userLocation]);
+  }, [mapRegion, parks, radius, userLocation, visibleMapEvents]);
 
   const availablePetFilters = useMemo(() => {
     const uniqueSpecies = Array.from(
@@ -991,7 +1023,7 @@ export default function GruposEventos() {
                 </View>
               )}
 
-              {filteredEvents.slice(0, 4).map((event) => (
+              {visibleMapEvents.slice(0, 4).map((event) => (
                 <TouchableOpacity
                   key={event.event_id}
                   style={[
@@ -1019,10 +1051,6 @@ export default function GruposEventos() {
                 </View>
               ))}
 
-              <View style={styles.mapPreviewFooter}>
-                <Text style={styles.mapPreviewTitle}>Preview do mapa</Text>
-                <Text style={styles.mapPreviewText}>Os parques proximos aparecem a verde e os eventos a laranja.</Text>
-              </View>
             </ImageBackground>
           ) : (
             <View style={styles.mapPreview}>
@@ -1030,27 +1058,6 @@ export default function GruposEventos() {
               <View style={styles.mapPreviewGlowTwo} />
 
               <View style={styles.mapGrid} />
-
-              {userLocation && (
-                <View style={[styles.previewMarker, styles.previewUserMarker, buildPreviewPoint(userLocation.latitude, userLocation.longitude)]}>
-                  <FontAwesome5 name="map-marker-alt" size={18} color="#2E8B7A" />
-                </View>
-              )}
-
-              {filteredEvents.slice(0, 6).map((event) => (
-                <TouchableOpacity
-                  key={event.event_id}
-                  style={[
-                    styles.previewMarker,
-                    styles.previewEventMarker,
-                    buildPreviewPoint(event.latitude, event.longitude),
-                  ]}
-                  onPress={() => handleOpenEventDetails(event)}
-                  activeOpacity={0.8}
-                >
-                  <FontAwesome5 name="paw" size={12} color="#FFFFFF" />
-                </TouchableOpacity>
-              ))}
 
               {parks.slice(0, 6).map((park) => (
                 <View
@@ -1065,24 +1072,22 @@ export default function GruposEventos() {
                 </View>
               ))}
 
-              <View style={styles.mapPreviewFooter}>
-                <Text style={styles.mapPreviewTitle}>Pré-visualização do mapa</Text>
-                <Text style={styles.mapPreviewText}>Eventos a laranja, parques a verde e a tua posição ao centro.</Text>
-              </View>
             </View>
           )}
 
           <View style={styles.legendRow}>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#E87A4D' }]} />
-              <Text style={styles.legendText}>Eventos</Text>
-            </View>
-            <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: '#57B2A1' }]} />
               <Text style={styles.legendText}>Parques</Text>
             </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#E87A4D' }]} />
+              <Text style={styles.legendText}>Eventos</Text>
+            </View>
           </View>
         </View>
+
+        
 
         <View style={styles.sectionThree}>
           <Text style={styles.sectionTitle}>Eventos futuros</Text>
@@ -1889,7 +1894,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#E87A4D',
   },
   previewParkMarker: {
-    backgroundColor: '#57B2A1',
+    backgroundColor: '#1B8F5A',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
   },
   mapPreviewFooter: {
     position: 'absolute',

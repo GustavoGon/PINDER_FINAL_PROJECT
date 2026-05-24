@@ -20,13 +20,14 @@ router.post("/upload", upload.single("photo"), async (req, res) => {
 });
 
 // UPDATE user
-router.put('/:user_id', userController.updateUser);
+router.put("/:user_id", userController.updateUser);
 
 // UPDATE user location
-router.put('/:user_id/location', userController.updateUserLocation);
+router.put("/:user_id/location", userController.updateUserLocation);
 
 // GET user by ID
-router.get('/:user_id', userController.getUserById);
+router.get("/:user_id", userController.getUserById);
 
+router.post("/push-token", userController.savePushToken);
 
 module.exports = router;

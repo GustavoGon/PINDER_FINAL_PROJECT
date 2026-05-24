@@ -3,6 +3,34 @@ const prisma = require("../prisma");
 const { getEventStatus } = require("../utils/event.utils");
 const { getNearbyEvents } = require("../services/event.service");
 
+// GET /events
+exports.getAllEvents = async (req, res) => {
+  try {
+    const events = await prisma.event.findMany({
+      include: {
+        creator: true,
+        attendees: {
+          include: {
+            user: true,
+            pet: true,
+          },
+        },
+      },
+      orderBy: { starts_at: "asc" },
+    });
+
+    res.json(
+      events.map((event) => ({
+        ...event,
+        status: getEventStatus(event),
+      }))
+    );
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error fetching events" });
+  }
+};
+
 // CREATE EVENT
 exports.createEvent = async (req, res) => {
   try {

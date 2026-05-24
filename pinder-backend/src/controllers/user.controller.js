@@ -6,10 +6,10 @@ const bcrypt = require("bcrypt");
 exports.getUserById = async (req, res) => {
   try {
     const { user_id } = req.params;
-    
+
     // Vai buscar o utilizador à BD
     const user = await prisma.user.findUnique({
-      where: { user_id: user_id }
+      where: { user_id: user_id },
     });
 
     if (!user) {
@@ -22,7 +22,6 @@ exports.getUserById = async (req, res) => {
     res.status(500).json({ error: "Erro interno do servidor." });
   }
 };
-
 
 // GET /users
 exports.getUsers = async (req, res) => {
@@ -55,7 +54,7 @@ exports.createUser = async (req, res) => {
         location: district || null,
         dob: dob ? new Date(dob) : null,
         photo: photo || null,
-        isBanned: false
+        isBanned: false,
       },
     });
 
@@ -100,14 +99,21 @@ exports.loginUser = async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    if (user.isBanned) {
+      return res.status(403).json({
+        error:
+          "A tua conta foi banida. Contacta o suporte para mais informações.",
+        code: "USER_BANNED",
+      });
+    }
+
     // 4. Login com sucesso, retorna os dados do utilizador (sem password)
     const { password: _, ...userWithoutPassword } = user;
 
     res.status(200).json({
       message: "Login successful",
-      user: userWithoutPassword
+      user: userWithoutPassword,
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Error during login" });
@@ -117,26 +123,31 @@ exports.loginUser = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const { user_id } = req.params;
-    const { username, dob, location, photo } = req.body;
+    const { username, dob, location, photo, isBanned } = req.body;
 
     // Construir objeto de dados dinamicamente (só enviar o que foi realmente alterado)
     const dataToUpdate = {};
-    
+
     if (username !== undefined) dataToUpdate.username = username;
     if (dob !== undefined) dataToUpdate.dob = dob;
     if (location !== undefined) dataToUpdate.location = location;
     if (photo !== undefined) dataToUpdate.photo = photo;
+    if (isBanned !== undefined) dataToUpdate.isBanned = isBanned;
 
     // Atualiza o utilizador na base de dados
     const updatedUser = await prisma.user.update({
       where: { user_id: user_id },
-      data: dataToUpdate
+      data: dataToUpdate,
     });
 
-    res.status(200).json({ message: "Utilizador atualizado", user: updatedUser });
+    res
+      .status(200)
+      .json({ message: "Utilizador atualizado", user: updatedUser });
   } catch (error) {
     console.error("Erro ao atualizar utilizador:", error);
-    res.status(500).json({ error: "Erro interno do servidor ao atualizar utilizador." });
+    res
+      .status(500)
+      .json({ error: "Erro interno do servidor ao atualizar utilizador." });
   }
 };
 
@@ -147,13 +158,15 @@ exports.updateUserLocation = async (req, res) => {
     const { latitude, longitude, location } = req.body;
 
     if (!latitude || !longitude) {
-      return res.status(400).json({ error: "Latitude e longitude são obrigatórias" });
+      return res
+        .status(400)
+        .json({ error: "Latitude e longitude são obrigatórias" });
     }
 
     // Se location não é enviado, manter o valor anterior
     const dataToUpdate = {
       latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude)
+      longitude: parseFloat(longitude),
     };
 
     // Só atualizar location se for explicitamente enviado
@@ -163,12 +176,39 @@ exports.updateUserLocation = async (req, res) => {
 
     const updatedUser = await prisma.user.update({
       where: { user_id },
-      data: dataToUpdate
+      data: dataToUpdate,
     });
 
-    res.status(200).json({ message: "Localização atualizada", user: updatedUser });
+    res
+      .status(200)
+      .json({ message: "Localização atualizada", user: updatedUser });
   } catch (error) {
     console.error("Erro ao atualizar localização:", error);
     res.status(500).json({ error: "Erro ao atualizar localização" });
+  }
+};
+
+exports.savePushToken = async (req, res) => {
+  try {
+    const { userId, token } = req.body;
+
+    await prisma.user.update({
+      where: {
+        user_id: userId,
+      },
+      data: {
+        push_token: token,
+      },
+    });
+
+    res.json({
+      ok: true,
+    });
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      error: "Failed to save push token",
+    });
   }
 };

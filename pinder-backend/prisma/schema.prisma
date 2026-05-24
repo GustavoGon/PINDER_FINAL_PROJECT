@@ -48,6 +48,7 @@ model User {
   dob         DateTime?
   description String?
   isBanned    Boolean 
+  push_token String?
 
   pets                      Pet[]
   messages                  Message[]

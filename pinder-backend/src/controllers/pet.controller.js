@@ -3,6 +3,11 @@ const prisma = require("../prisma");
 // GET /pets
 exports.getPets = async (req, res) => {
   const pets = await prisma.pet.findMany({
+    where: {
+      owner: {
+        isBanned: false,
+      },
+    },
     include: { owner: true },
   });
   res.json(pets);
@@ -18,6 +23,10 @@ exports.getPetById = async (req, res) => {
     });
 
     if (!pet) {
+      return res.status(404).json({ error: "Pet não encontrado" });
+    }
+
+    if (pet.owner?.isBanned) {
       return res.status(404).json({ error: "Pet não encontrado" });
     }
 

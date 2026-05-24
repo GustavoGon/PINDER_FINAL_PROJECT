@@ -13,6 +13,7 @@ import { useActiveProfile } from '../src/contexts/ActiveProfileContext';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = 0.25 * SCREEN_WIDTH; 
 const SWIPE_OUT_DURATION = 250;
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
 
 // Componente para o selo de Adoção/Amizade
 const AdoptionBadge = ({ isForAdoption }: { isForAdoption: boolean }) => (
@@ -24,9 +25,18 @@ const AdoptionBadge = ({ isForAdoption }: { isForAdoption: boolean }) => (
   </View>
 );
 
+const normalizePetList = (payload: any) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.pets)) return payload.pets;
+  return [];
+};
+
 export default function FeedSwipe() {
   const router = useRouter();
   const { activeProfile } = useActiveProfile(); 
+  const activeProfileId = activeProfile?.id;
+  const activeProfileType = activeProfile?.type;
   const [pets, setPets] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [myPetId, setMyPetId] = useState<string | null>(null);
@@ -39,14 +49,17 @@ export default function FeedSwipe() {
 
   const position = useRef(new Animated.ValueXY()).current;
   const flipAnim = useRef(new Animated.Value(0)).current;
+  const currentPetRef = useRef<any>(null);
 
-  const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000'; 
+  useEffect(() => {
+    currentPetRef.current = pets[currentIndex] || null;
+  }, [pets, currentIndex]);
 
   // --- 1. CARREGAR E FILTRAR OS PETS ---
  useEffect(() => {
     const fetchFeed = async () => {
       // Se ainda não temos o perfil ativo, paramos o loading para não ficar preso
-      if (!activeProfile || !activeProfile.id) {
+      if (!activeProfileId) {
         setIsLoading(false);
         return; 
       }
@@ -55,8 +68,8 @@ export default function FeedSwipe() {
       setPets([]); // Limpar pets anteriores
       setCurrentIndex(0);
       console.info('[Recommendations] A carregar feed', {
-        mode: activeProfile.type,
-        profileId: activeProfile.id,
+        mode: activeProfileType,
+        profileId: activeProfileId,
       });
       
       try {
@@ -65,27 +78,27 @@ export default function FeedSwipe() {
         const myUserId = currentUser.user_id || currentUser.id;
 
         // 🔍 Se é PET: Usar recomendações do pet específico
-        if (activeProfile.type === 'pet') {
-          console.info('[Recommendations] Pedido para pet', { petId: activeProfile.id });
+        if (activeProfileType === 'pet') {
+          console.info('[Recommendations] Pedido para pet', { petId: activeProfileId });
           
           const recommendationsResponse = await fetch(
-            `${API_URL}/recommendations?pet_id=${activeProfile.id}&mode=normal`
+            `${API_URL}/recommendations?pet_id=${activeProfileId}&mode=normal`
           );
           
           if (recommendationsResponse.ok) {
-            const feedPets = await recommendationsResponse.json();
+            const feedPets = normalizePetList(await recommendationsResponse.json());
             console.info('[Recommendations] Resposta recebida', {
               mode: 'normal',
               count: feedPets.length,
             });
             setPets(feedPets);
-            setMyPetId(activeProfile.id);
+            setMyPetId(activeProfileId);
           } else {
             console.error("Erro do servidor:", await recommendationsResponse.text());
           }
         } 
         // 👤 Se é TUTOR: Mostrar pets para adoção próximos
-        else if (activeProfile.type === 'tutor') {
+        else if (activeProfileType === 'tutor') {
           console.info('[Recommendations] Pedido para tutor', { userId: myUserId });
           
           const adoptionResponse = await fetch(
@@ -93,7 +106,7 @@ export default function FeedSwipe() {
           );
           
           if (adoptionResponse.ok) {
-            const adoptionPets = await adoptionResponse.json();
+            const adoptionPets = normalizePetList(await adoptionResponse.json());
             console.info('[Recommendations] Resposta recebida', {
               mode: 'adoption',
               count: adoptionPets.length,
@@ -112,7 +125,7 @@ export default function FeedSwipe() {
     };
 
     fetchFeed();
-  }, [activeProfile?.id, activeProfile?.type]);
+  }, [activeProfileId, activeProfileType]);
 
   const calculateAge = (dobString: string) => {
     if (!dobString) return "Idade desconhecida";
@@ -145,32 +158,42 @@ export default function FeedSwipe() {
   ).current;
 
   const forceSwipe = (direction: 'right' | 'left') => {
+    const swipedPet = currentPetRef.current;
+
+    if (!swipedPet) {
+      console.warn('Pet não encontrado ao iniciar swipe no índice:', currentIndex);
+      resetPosition();
+      return;
+    }
+
     const x = direction === 'right' ? SCREEN_WIDTH + 100 : -SCREEN_WIDTH - 100;
     Animated.timing(position, {
       toValue: { x, y: 0 },
       duration: SWIPE_OUT_DURATION,
       useNativeDriver: false,
-    }).start(() => onSwipeComplete(direction));
+    }).start(() => onSwipeComplete(direction, swipedPet));
   };
 
-  const onSwipeComplete = async (direction: 'right' | 'left') => {
-    const swipedPet = pets[currentIndex];
-    
-    // Verificar se o pet existe antes de continuar
+  const onSwipeComplete = async (direction: 'right' | 'left', swipedPet: any) => {
     if (!swipedPet) {
-      console.warn("Pet não encontrado no índice:", currentIndex);
-      setCurrentIndex((prev) => prev + 1);
+      console.warn('Swipe concluído sem pet associado.');
+      resetPosition();
       return;
     }
 
     const isLike = direction === 'right';
+    let savedSuccessfully = false;
 
     try {
       // 👤 Se é TUTOR: guardar em TutorAdoptionInteraction
       if (activeProfile?.type === 'tutor') {
         const userStr = await AsyncStorage.getItem('user');
         const currentUser = userStr ? JSON.parse(userStr) : {};
-        const tutorId = currentUser.user_id || currentUser.id;
+        const tutorId = activeProfile?.id || currentUser.user_id || currentUser.id;
+
+        if (!tutorId) {
+          throw new Error('Tutor ID não encontrado');
+        }
 
         console.log(`📤 Enviando adoção: tutor=${tutorId}, pet=${swipedPet.pet_id}, like=${isLike}`);
 
@@ -194,6 +217,7 @@ export default function FeedSwipe() {
 
           const adoptionData = await adoptionResponse.json();
           console.log(`✅ Adoção guardada:`, adoptionData);
+          savedSuccessfully = true;
 
           if (isLike) {
             setMatchedPet(swipedPet);
@@ -207,7 +231,9 @@ export default function FeedSwipe() {
       } 
       // 🐾 Se é PET: registrar interação normal
       else {
-        if (!myPetId) {
+        const petIdToUse = activeProfileId || myPetId;
+
+        if (!petIdToUse) {
           console.warn("Pet do utilizador não configurado");
           setCurrentIndex((prev) => prev + 1);
           return;
@@ -217,7 +243,7 @@ export default function FeedSwipe() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            pet_id: myPetId,
+            pet_id: petIdToUse,
             target_pet_id: swipedPet.pet_id,
             like_dislike: isLike
           })
@@ -226,6 +252,7 @@ export default function FeedSwipe() {
         if (response.status === 201) {
           // MATCH DETECTADO!
           const data = await response.json();
+          savedSuccessfully = true;
           if (data.message === "🎉 It's a match!") {
             setMatchedPet(swipedPet);
             setShowMatchModal(true);
@@ -234,6 +261,11 @@ export default function FeedSwipe() {
       }
     } catch (error) {
       console.error("Erro ao guardar interação:", error);
+    }
+
+    if (!savedSuccessfully) {
+      resetPosition();
+      return;
     }
 
     setCurrentIndex((prev) => prev + 1);

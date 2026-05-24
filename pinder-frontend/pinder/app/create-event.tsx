@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   ActivityIndicator,
+  Linking,
   KeyboardAvoidingView,
   Platform,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -50,7 +52,90 @@ type LocationSuggestion = {
   longitude: number;
 };
 
-const RADIUS_OPTIONS = [5, 10, 25, 50];
+const RADIUS_OPTIONS = [1, 3, 5, 8];
+const USER_MAP_ICON_URL = 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png';
+const PARK_MAP_ICON_URL = 'https://maps.google.com/mapfiles/ms/icons/green-dot.png';
+
+const getZoomFromRadius = (radiusKm: number) => {
+  if (radiusKm <= 1) return 16;
+  if (radiusKm <= 3) return 15;
+  if (radiusKm <= 5) return 14;
+  if (radiusKm <= 8) return 13;
+  return 12;
+};
+
+const getZoomFromBounds = (latitudeDelta: number, longitudeDelta: number) => {
+  const span = Math.max(latitudeDelta, longitudeDelta);
+
+  if (span <= 0.01) return 15;
+  if (span <= 0.03) return 14;
+  if (span <= 0.06) return 13;
+  if (span <= 0.12) return 12;
+  if (span <= 0.25) return 11;
+  if (span <= 0.5) return 10;
+  return 9;
+};
+
+const buildMarker = ({
+  latitude,
+  longitude,
+  iconUrl,
+  color,
+  label,
+  size = 'mid',
+}: {
+  latitude: number;
+  longitude: number;
+  iconUrl?: string;
+  color?: string;
+  label?: string;
+  size?: 'tiny' | 'mid' | 'small';
+}) => {
+  const markerParts: string[] = [];
+
+  if (iconUrl) {
+    markerParts.push(`icon:${iconUrl}`, 'anchor:center');
+  } else {
+    markerParts.push(`size:${size}`);
+    if (color) {
+      markerParts.push(`color:${color}`);
+    }
+    if (label) {
+      markerParts.push(`label:${label}`);
+    }
+  }
+
+  markerParts.push(`${latitude},${longitude}`);
+
+  return markerParts.join('|');
+};
+
+const buildCirclePath = (latitude: number, longitude: number, radiusKm: number) => {
+  const points: string[] = [];
+  const earthRadiusKm = 6371;
+  const angularDistance = radiusKm / earthRadiusKm;
+
+  for (let index = 0; index <= 24; index += 1) {
+    const bearing = (index / 24) * Math.PI * 2;
+    const lat1 = (latitude * Math.PI) / 180;
+    const lon1 = (longitude * Math.PI) / 180;
+
+    const lat2 = Math.asin(
+      Math.sin(lat1) * Math.cos(angularDistance) +
+        Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing),
+    );
+    const lon2 =
+      lon1 +
+      Math.atan2(
+        Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(lat1),
+        Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2),
+      );
+
+    points.push(`${(lat2 * 180) / Math.PI},${((lon2 * 180) / Math.PI + 540) % 360 - 180}`);
+  }
+
+  return points.join('|');
+};
 
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const earthRadiusKm = 6371;
@@ -87,6 +172,8 @@ export default function CreateEventScreen() {
   const [useManualCoordinates, setUseManualCoordinates] = useState(false);
   const [manualLatitude, setManualLatitude] = useState('');
   const [manualLongitude, setManualLongitude] = useState('');
+  const [selectedParkId, setSelectedParkId] = useState<string | null>(null);
+  const [mapPreviewLoading, setMapPreviewLoading] = useState(true);
   const locationSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [formData, setFormData] = useState<FormState>({
@@ -172,9 +259,17 @@ export default function CreateEventScreen() {
 
       const response = await fetch('https://overpass-api.de/api/interpreter', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          // Overpass prefers a descriptive User-Agent/contact so add one to reduce chance of being blocked
+          'User-Agent': 'PinderApp/1.0 (+https://pinder.app)',
+          Accept: 'application/json',
+        },
         body: `data=${encodeURIComponent(query)}`,
       });
+
+      // Debugging: log status for diagnosis when no parks are found during QA
+      console.debug('[fetchNearbyParks] Overpass status', response.status, 'ok?', response.ok);
 
       if (!response.ok) {
         setParks([]);
@@ -182,11 +277,19 @@ export default function CreateEventScreen() {
       }
 
       const payload = await response.json();
+      console.debug('[fetchNearbyParks] elements found', Array.isArray(payload?.elements) ? payload.elements.length : 0);
       const mapped: ParkSpot[] = (payload.elements || [])
         .map((element: any) => {
           const latitude = element.lat ?? element.center?.lat;
           const longitude = element.lon ?? element.center?.lon;
-          const name = element.tags?.name || 'Parque';
+          const name =
+            element.tags?.name ||
+            element.tags?.['name:pt'] ||
+            element.tags?.short_name ||
+            element.tags?.official_name ||
+            element.tags?.operator ||
+            element.tags?.['name:en'] ||
+            'Parque sem nome';
 
           if (typeof latitude !== 'number' || typeof longitude !== 'number') {
             return null;
@@ -215,9 +318,150 @@ export default function CreateEventScreen() {
     void fetchNearbyParks();
   }, [fetchNearbyParks]);
 
-  const recommendedParks = useMemo(() => parks.slice(0, 6), [parks]);
+  const selectedPark = useMemo(
+    () => parks.find((park) => park.id === selectedParkId) || null,
+    [parks, selectedParkId],
+  );
 
-  const selectMeetingPoint = (name: string, latitude: number, longitude: number) => {
+  const selectedMapPoint = useMemo(() => {
+    if (selectedPark) {
+      return selectedPark;
+    }
+
+    if (formData.targetLatitude !== null && formData.targetLongitude !== null) {
+      return {
+        id: 'selected-form-point',
+        name: formData.location.trim() || 'Local selecionado',
+        latitude: formData.targetLatitude,
+        longitude: formData.targetLongitude,
+      };
+    }
+
+    return null;
+  }, [formData.location, formData.targetLatitude, formData.targetLongitude, selectedPark]);
+
+  const mapPreviewFit = useMemo(() => {
+    const mapPoints = [userLocation, selectedMapPoint].filter(
+      (point): point is { latitude: number; longitude: number } => Boolean(point),
+    );
+
+    if (mapPoints.length > 0) {
+      const latitudes = mapPoints.map((point) => point.latitude);
+      const longitudes = mapPoints.map((point) => point.longitude);
+      const centerLatitude = (Math.min(...latitudes) + Math.max(...latitudes)) / 2;
+      const centerLongitude = (Math.min(...longitudes) + Math.max(...longitudes)) / 2;
+      const latitudeDelta = Math.max(...latitudes) - Math.min(...latitudes);
+      const longitudeDelta = Math.max(...longitudes) - Math.min(...longitudes);
+
+      const padding = Math.max(latitudeDelta, longitudeDelta);
+
+      return {
+        center: {
+          latitude: centerLatitude,
+          longitude: centerLongitude,
+        },
+        zoom:
+          mapPoints.length === 1
+            ? getZoomFromRadius(radius)
+            : getZoomFromBounds(latitudeDelta, longitudeDelta),
+        visiblePoints: mapPoints.map((point) => `${point.latitude},${point.longitude}`),
+        padding,
+      };
+    }
+
+    return null;
+  }, [radius, selectedMapPoint, userLocation]);
+
+  const mapPreviewUrl = useMemo(() => {
+    const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+    if (!googleMapsApiKey || !mapPreviewFit) {
+      return null;
+    }
+
+    const center = `${mapPreviewFit.center.latitude},${mapPreviewFit.center.longitude}`;
+    const markerParams = [
+      userLocation
+        ? buildMarker({
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude,
+            iconUrl: USER_MAP_ICON_URL,
+          })
+        : null,
+      selectedMapPoint
+        ? buildMarker({
+            latitude: selectedMapPoint.latitude,
+            longitude: selectedMapPoint.longitude,
+            iconUrl: PARK_MAP_ICON_URL,
+          })
+        : null,
+    ].filter((marker): marker is string => Boolean(marker));
+
+    const style = [
+      'feature:poi|visibility:off',
+      'feature:transit|visibility:off',
+      'feature:landscape|element:geometry|color:0xf4f1ea',
+      'feature:water|element:geometry|color:0xd9edf5',
+      'feature:road|element:geometry|color:0xffffff',
+    ];
+
+    const radiusCircle = buildCirclePath(mapPreviewFit.center.latitude, mapPreviewFit.center.longitude, Math.max(radius, 2));
+    const visiblePoints = mapPreviewFit.visiblePoints;
+
+    return `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(center)}&zoom=${mapPreviewFit.zoom}&size=900x220&scale=2&maptype=roadmap${
+      style.map((item) => `&style=${encodeURIComponent(item)}`).join('')
+    }&path=${encodeURIComponent(`fillcolor:0x1B8F5A22|color:0x1B8F5A88|weight:2|${radiusCircle}`)}${
+      markerParams.length > 0 ? `&${markerParams.map((marker) => `markers=${encodeURIComponent(marker)}`).join('&')}` : ''
+    }${visiblePoints.map((point) => `&visible=${encodeURIComponent(point)}`).join('')}` +
+      `&key=${encodeURIComponent(googleMapsApiKey)}`;
+  }, [mapPreviewFit, radius, selectedMapPoint, userLocation]);
+  
+  const handleOpenMap = useCallback(async () => {
+    const destination = selectedMapPoint ?? userLocation;
+
+    if (!destination) {
+      return;
+    }
+
+    const destinationQuery = `${destination.latitude},${destination.longitude}`;
+    const url =
+      userLocation && selectedMapPoint
+        ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
+            `${userLocation.latitude},${userLocation.longitude}`,
+          )}&destination=${encodeURIComponent(destinationQuery)}&travelmode=walking`
+        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destinationQuery)}`;
+
+    const canOpen = await Linking.canOpenURL(url);
+    if (!canOpen) {
+      Alert.alert('Mapa', 'Nao foi possivel abrir o mapa externo neste dispositivo.');
+      return;
+    }
+
+    await Linking.openURL(url);
+  }, [selectedMapPoint, userLocation]);
+
+  useEffect(() => {
+    setMapPreviewLoading(true);
+  }, [mapPreviewUrl]);
+
+  const nearbyParksSorted = useMemo(() => {
+    if (!userLocation) return parks.slice(0, 8);
+    return parks
+      .map((p) => ({
+        ...p,
+        distance:
+          typeof p.latitude === 'number' && typeof p.longitude === 'number'
+            ? calculateDistance(userLocation.latitude, userLocation.longitude, p.latitude, p.longitude)
+            : Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
+  }, [parks, userLocation]);
+
+  const displayParks = loadingParks
+    ? Array.from({ length: 6 }, (_, index) => ({ id: `loading-park-${index}`, isLoading: true as const }))
+    : nearbyParksSorted.slice(0, 8);
+
+  const selectMeetingPoint = (name: string, latitude: number, longitude: number, parkId?: string) => {
     setFormData((prev) => ({
       ...prev,
       location: name,
@@ -228,6 +472,7 @@ export default function CreateEventScreen() {
     setManualLongitude(longitude.toFixed(6));
     setLocationSuggestions([]);
     setShowLocationSuggestions(false);
+    setSelectedParkId(parkId ?? null);
   };
 
   const fetchLocationSuggestions = useCallback(async (query: string) => {
@@ -300,6 +545,7 @@ export default function CreateEventScreen() {
       targetLatitude: null,
       targetLongitude: null,
     }));
+    setSelectedParkId(null);
 
     if (locationSearchDebounceRef.current) {
       clearTimeout(locationSearchDebounceRef.current);
@@ -327,6 +573,7 @@ export default function CreateEventScreen() {
     }));
     setManualLatitude(suggestion.latitude.toFixed(6));
     setManualLongitude(suggestion.longitude.toFixed(6));
+    setSelectedParkId(null);
     setShowLocationSuggestions(false);
   };
 
@@ -511,15 +758,16 @@ export default function CreateEventScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Pontos recomendados</Text>
             <Text style={styles.sectionSubtitle}>Seleciona um parque ou um ponto manual para guardar as coordenadas do evento.</Text>
+            <Text style={styles.parksDisclaimer}>Os parques sem nome podem ter uma localização menos precisa e menos segura. Confirma sempre o ponto antes de publicar.</Text>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardsRow}>
               <TouchableOpacity
-                style={styles.pointCard}
+                style={[styles.pointCard, !selectedParkId && { borderColor: '#2E8B7A', backgroundColor: '#EAF6F3' }]}
                 onPress={() => {
                   if (!userLocation) {
                     return;
                   }
-                  selectMeetingPoint('Local atual', userLocation.latitude, userLocation.longitude);
+                  selectMeetingPoint('Local atual', userLocation.latitude, userLocation.longitude, undefined);
                 }}
               >
                 <View style={[styles.pointIcon, styles.pointIconCurrent]}>
@@ -530,33 +778,134 @@ export default function CreateEventScreen() {
                 <Text style={styles.pointAction}>Selecionar</Text>
               </TouchableOpacity>
 
-              {recommendedParks.length === 0 ? (
+              {displayParks.length === 0 ? (
                 <View style={styles.emptyPointCard}>
-                  <Text style={styles.emptyPointText}>{loadingParks ? 'A carregar parques...' : 'Sem parques próximos para este raio.'}</Text>
+                  <Text style={styles.emptyPointText}>Sem parques próximos para este raio.</Text>
                 </View>
               ) : (
-                recommendedParks.map((park) => {
-                  const distance = userLocation
-                    ? calculateDistance(userLocation.latitude, userLocation.longitude, park.latitude, park.longitude)
+                displayParks.map((park) => {
+                  const realPark = 'isLoading' in park ? null : park;
+                  const distance = realPark && userLocation
+                    ? calculateDistance(userLocation.latitude, userLocation.longitude, realPark.latitude, realPark.longitude)
                     : null;
+
+                  const isSelected = realPark ? selectedParkId === realPark.id : false;
 
                   return (
                     <TouchableOpacity
                       key={park.id}
-                      style={styles.pointCard}
-                      onPress={() => selectMeetingPoint(park.name, park.latitude, park.longitude)}
+                      style={[
+                        styles.pointCard,
+                        isSelected && { borderColor: '#2E8B7A', backgroundColor: '#EAF6F3' },
+                        loadingParks && styles.pointCardLoading,
+                      ]}
+                      disabled={loadingParks || !realPark}
+                      onPress={() => {
+                        if (!realPark) {
+                          return;
+                        }
+                        selectMeetingPoint(realPark.name, realPark.latitude, realPark.longitude, realPark.id);
+                      }}
                     >
-                      <View style={styles.pointIcon}>
-                        <FontAwesome5 name="tree" size={13} color="#57B2A1" />
-                      </View>
-                      <Text style={styles.pointTitle}>{park.name}</Text>
-                      <Text style={styles.pointMeta}>{distance ? `${distance.toFixed(1)} km` : 'Parque recomendado'}</Text>
-                      <Text style={styles.pointAction}>Selecionar</Text>
+                      {loadingParks ? (
+                        <>
+                          <View style={styles.pointIcon}>
+                            <ActivityIndicator size="small" color="#2E8B7A" />
+                          </View>
+                          <Text style={styles.pointTitle}>A carregar...</Text>
+                          <Text style={styles.pointMeta}>A atualizar resultados</Text>
+                        </>
+                      ) : (
+                        <>
+                          <View style={styles.pointIcon}>
+                            <FontAwesome5 name="tree" size={13} color="#57B2A1" />
+                          </View>
+                          <Text style={styles.pointTitle}>{realPark?.name}</Text>
+                          <Text style={styles.pointMeta}>{distance ? `${distance.toFixed(1)} km` : 'Parque recomendado'}</Text>
+                          <Text style={styles.pointAction}>{isSelected ? 'Selecionado' : 'Selecionar'}</Text>
+                        </>
+                      )}
                     </TouchableOpacity>
                   );
                 })
               )}
             </ScrollView>
+
+            <View style={styles.mapPreviewCard}>
+              <View style={styles.mapPreviewHeaderRow}>
+                <View>
+                  <Text style={styles.mapPreviewTitle}>Mapa dos parques</Text>
+                  <Text style={styles.mapPreviewSubtitle}>
+                    {selectedPark
+                      ? `Centrado em ${selectedPark.name}`
+                      : userLocation
+                        ? 'Centrado na tua localização atual'
+                        : 'A localizar a tua posição'}
+                  </Text>
+                </View>
+                {(loadingParks || mapPreviewLoading) && (
+                  <View style={styles.mapLoadingBadge}>
+                    <ActivityIndicator size="small" color="#2E8B7A" />
+                    <Text style={styles.mapLoadingBadgeText}>{mapPreviewLoading ? 'A carregar mapa' : 'A carregar novos mapas'}</Text>
+                  </View>
+                )}
+              </View>
+              
+              <TouchableOpacity
+                style={[
+                  styles.openMapButton,
+                  !selectedMapPoint && !userLocation && styles.openMapButtonDisabled,
+                ]}
+                onPress={handleOpenMap}
+                disabled={!selectedMapPoint && !userLocation}
+              >
+                <View style={styles.openMapIconWrap}>
+                  <FontAwesome5 name="route" size={11} color="#2E8B7A" />
+                </View>
+                <Text style={styles.openMapButtonText}>Ver direções</Text>
+              </TouchableOpacity>
+
+              <View style={styles.mapLegendRow}>
+                <View style={styles.mapLegendItem}>
+                  <View style={[styles.mapLegendDot, styles.mapLegendDotUser]} />
+                  <Text style={styles.mapLegendText}>Tu</Text>
+                </View>
+                <View style={styles.mapLegendItem}>
+                  <View style={[styles.mapLegendDot, styles.mapLegendDotPark]} />
+                  <Text style={styles.mapLegendText}>Ponto do evento</Text>
+                </View>
+              </View>
+
+              {mapPreviewUrl ? (
+                <View style={styles.mapPreviewImageWrap}>
+                  <Image
+                    source={{ uri: mapPreviewUrl }}
+                    style={styles.mapPreviewImage}
+                    resizeMode="cover"
+                    onLoadStart={() => setMapPreviewLoading(true)}
+                    onLoadEnd={() => setMapPreviewLoading(false)}
+                    onError={() => setMapPreviewLoading(false)}
+                  />
+                  {(loadingParks || mapPreviewLoading) && <View style={styles.mapPreviewOverlay} />}
+                </View>
+              ) : (
+                <View style={styles.mapPreviewFallback}>
+                  {(loadingParks || mapPreviewLoading) ? (
+                    <>
+                      <ActivityIndicator size="small" color="#2E8B7A" />
+                      <Text style={[styles.mapPreviewFallbackText, { marginTop: 10 }]}>A carregar mapa</Text>
+                    </>
+                  ) : (
+                    <Text style={styles.mapPreviewFallbackText}>Define a chave do Google Maps para ver o mapa.</Text>
+                  )}
+                </View>
+              )}
+
+              {selectedPark && (
+                <Text style={styles.mapPreviewSelectedText}>Parque selecionado: {selectedPark.name}</Text>
+              )}
+            </View>
+
           </View>
 
           <View style={styles.section}>
@@ -800,6 +1149,17 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     marginTop: -4,
   },
+  parksDisclaimer: {
+    color: '#9A6B2F',
+    fontSize: 11,
+    lineHeight: 16,
+    backgroundColor: '#FFF6E7',
+    borderWidth: 1,
+    borderColor: '#F0D7A8',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   radiusRow: {
     flexDirection: 'row',
     gap: 8,
@@ -837,6 +1197,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FBF8F2',
     padding: 12,
     gap: 6,
+  },
+  pointCardLoading: {
+    opacity: 0.82,
+    backgroundColor: '#F4F0E7',
   },
   pointIcon: {
     width: 32,
@@ -902,6 +1266,139 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   emptyPointText: {
+    color: '#8B837A',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  mapPreviewCard: {
+    marginTop: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#D6CEC3',
+    backgroundColor: '#FBF8F2',
+    padding: 12,
+    gap: 8,
+  },
+  mapPreviewHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  mapPreviewTitle: {
+    color: '#5C4A3D',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  mapPreviewSubtitle: {
+    color: '#7E776F',
+    fontSize: 11,
+    marginTop: -4,
+  },
+  mapPreviewImage: {
+    width: '100%',
+    height: 170,
+    borderRadius: 14,
+    backgroundColor: '#EDE6D9',
+  },
+  mapPreviewImageWrap: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  mapPreviewOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  mapLoadingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#EAF6F3',
+    borderWidth: 1,
+    borderColor: '#CBE7E0',
+  },
+  mapLoadingBadgeText: {
+    color: '#2E8B7A',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  mapPreviewSelectedText: {
+    color: '#2E8B7A',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  openMapButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBE7E0',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  openMapButtonDisabled: {
+    opacity: 0.52,
+  },
+  openMapIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EAF6F3',
+  },
+  openMapButtonText: {
+    color: '#2E8B7A',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  mapLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  mapLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  mapLegendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  mapLegendDotUser: {
+    backgroundColor: '#3B82F6',
+  },
+  mapLegendDotPark: {
+    backgroundColor: '#22A55A',
+  },
+  mapLegendText: {
+    color: '#7E776F',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  mapPreviewFallback: {
+    width: '100%',
+    minHeight: 170,
+    borderRadius: 14,
+    backgroundColor: '#F2ECE0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  mapPreviewFallbackText: {
     color: '#8B837A',
     fontSize: 12,
     textAlign: 'center',
