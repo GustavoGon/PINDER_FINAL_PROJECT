@@ -24,6 +24,7 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     });
 
     if (!userPet) throw new Error("Pet not found");
+    if (userPet.owner?.isBanned) throw new Error("A tua conta foi banida. Contacta o suporte para mais informações.");
 
     baseLocation = userPet.owner;
     console.info('[Recommendations] Pet base carregado', {
@@ -42,6 +43,7 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     });
 
     if (!user) throw new Error("User not found");
+    if (user.isBanned) throw new Error("A tua conta foi banida. Contacta o suporte para mais informações.");
 
     baseLocation = user;
 
@@ -90,6 +92,9 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
       ...(mode === "normal" && { pet_id: { not: pet_id } }),
       ...(mode === "normal" && { NOT: { pet_id: { in: seenIds } } }),
       forAdoption: mode === "adoption",
+      owner: {
+        isBanned: false,
+      },
     },
     include: {
       breed: true,

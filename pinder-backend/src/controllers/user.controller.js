@@ -100,6 +100,13 @@ exports.loginUser = async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    if (user.isBanned) {
+      return res.status(403).json({
+        error: "A tua conta foi banida. Contacta o suporte para mais informações.",
+        code: "USER_BANNED",
+      });
+    }
+
     // 4. Login com sucesso, retorna os dados do utilizador (sem password)
     const { password: _, ...userWithoutPassword } = user;
 

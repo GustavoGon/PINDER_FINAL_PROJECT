@@ -29,7 +29,15 @@ exports.getMatches = async (req, res) => {
       },
     });
 
-    res.json(matches);
+    const visibleMatches = matches.filter((match) => {
+      const pet1OwnerBanned = Boolean(match.pet1?.owner?.isBanned);
+      const pet2OwnerBanned = Boolean(match.pet2?.owner?.isBanned);
+      const adopterBanned = match.adopter ? Boolean(match.adopter.isBanned) : false;
+
+      return !pet1OwnerBanned && !pet2OwnerBanned && !adopterBanned;
+    });
+
+    res.json(visibleMatches);
   } catch (error) {
     console.error("Erro ao carregar matches:", error);
     res.status(500).json({ error: "Erro ao carregar matches" });

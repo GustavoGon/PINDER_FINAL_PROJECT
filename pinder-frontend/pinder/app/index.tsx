@@ -90,6 +90,8 @@ export default function Login() {
         setTimeout(() => {
           router.push('/feedSwipe');
         }, 500);
+      } else if (response.status === 403 && data?.code === 'USER_BANNED') {
+        setErrorMessage(data.error || 'A tua conta foi banida. Contacta o suporte.');
       } else {
         setErrorMessage(data.error || 'Erro ao iniciar sessão.');
       }
