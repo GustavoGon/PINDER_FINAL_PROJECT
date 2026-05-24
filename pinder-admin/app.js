@@ -24,15 +24,12 @@ const state = {
 
 const navButtons = Array.from(document.querySelectorAll(".nav-item"));
 const searchInput = document.getElementById("search");
-const apiUrlInput = document.getElementById("apiUrl");
-const syncButton = document.getElementById("syncApi");
+const refreshButton = document.getElementById("refreshData");
 const kpiGrid = document.getElementById("kpiGrid");
 const primaryContent = document.getElementById("primaryContent");
 const insightContent = document.getElementById("insightContent");
 const sectionHeader = document.getElementById("sectionHeader");
 const insightHeader = document.getElementById("insightHeader");
-
-apiUrlInput.value = state.apiBaseUrl;
 
 navButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -47,24 +44,21 @@ searchInput.addEventListener("input", (event) => {
   render();
 });
 
-apiUrlInput.addEventListener("change", () => {
-  state.apiBaseUrl = apiUrlInput.value.trim() || "http://localhost:3000";
-  localStorage.setItem("pinder-admin-api", state.apiBaseUrl);
-});
-
-syncButton.addEventListener("click", async () => {
-  syncButton.disabled = true;
-  syncButton.textContent = "Syncing...";
+refreshButton.addEventListener("click", async () => {
+  refreshButton.disabled = true;
+  refreshButton.textContent = "Refreshing...";
+  state.syncState = "loading";
+  render();
 
   try {
-    await hydrateFromApi();
-    state.syncState = "live";
+    const errors = await hydrateFromApi();
+    state.syncState = errors.length ? "partial" : "live";
   } catch (error) {
-    state.syncState = "local";
-    alert(`Could not sync with backend: ${error.message}`);
+    state.syncState = "error";
+    alert(`Could not refresh live data: ${error.message}`);
   } finally {
-    syncButton.disabled = false;
-    syncButton.textContent = "Try live sync";
+    refreshButton.disabled = false;
+    refreshButton.textContent = "Refresh";
     render();
   }
 });

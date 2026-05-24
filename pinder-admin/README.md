@@ -27,5 +27,5 @@ Then open the printed URL in the browser.
 ## Data mode
 
 - The app starts with a seeded snapshot so it works immediately.
-- You can try live sync against the backend by changing the API base URL in the sidebar.
+- Use the refresh button in the top-right corner to pull the latest data from the backend.
 - Existing backend routes used by the admin view include `GET /users`, `GET /pets`, `GET /matches`, `GET /events`, `GET /groups`, `DELETE /pets/:id`, `PUT /matches/:id`, and `PATCH /events/:id/cancel`.
