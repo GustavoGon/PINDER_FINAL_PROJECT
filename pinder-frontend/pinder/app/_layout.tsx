@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActiveProfileProvider, useActiveProfile } from '../src/contexts/ActiveProfileContext';
 import { LoadingProvider } from '../src/contexts/LoadingContext';
+import { registerForPushNotifications } from "../src/services/notifications";
 
 function BackButtonExitGuard() {
   const router = useRouter();
@@ -92,6 +93,50 @@ function BannedSessionGuard() {
 }
 
 export default function Layout() {
+
+useEffect(() => {
+
+  const setupNotifications = async () => {
+
+    try {
+
+      const token =
+        await registerForPushNotifications();
+
+      if (!token) return;
+
+      console.log("Push token:", token);
+
+      const userStr =
+        await AsyncStorage.getItem("user");
+
+      if (!userStr) return;
+
+      const user = JSON.parse(userStr);
+
+      await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/users/push-token`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            userId: user.user_id,
+            token
+          })
+        }
+      );
+
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  setupNotifications();
+
+}, []);
+
   return (
     <SafeAreaProvider>
       <LoadingProvider>
