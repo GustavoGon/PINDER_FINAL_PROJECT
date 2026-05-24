@@ -35,7 +35,7 @@ const insightHeader = document.getElementById("insightHeader");
 const token = localStorage.getItem("adminToken");
 
 if (!token) {
-  window.location.href = "/login";
+  window.location.href = "login.html";
 }
 
 apiUrlInput.value = state.apiBaseUrl;
