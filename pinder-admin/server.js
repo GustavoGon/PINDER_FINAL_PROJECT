@@ -35,7 +35,9 @@ function sendFile(res, filePath) {
 }
 
 const server = http.createServer((req, res) => {
-  const requestPath = decodeURIComponent(new URL(req.url, `http://${req.headers.host}`).pathname);
+  const requestPath = decodeURIComponent(
+    new URL(req.url, `http://${req.headers.host}`).pathname,
+  );
   const safePath = requestPath === "/" ? "/index.html" : requestPath;
   const filePath = path.join(root, safePath);
 

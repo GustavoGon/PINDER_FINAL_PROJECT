@@ -19,8 +19,7 @@ const state = {
   },
   selected: null,
   syncState: "loading",
-  apiBaseUrl:
-    localStorage.getItem("pinder-admin-api") || "http://localhost:3000",
+  apiBaseUrl: localStorage.getItem("pinder-admin-api") || "http://localhost:3000",
 };
 
 const navButtons = Array.from(document.querySelectorAll(".nav-item"));
@@ -32,6 +31,11 @@ const primaryContent = document.getElementById("primaryContent");
 const insightContent = document.getElementById("insightContent");
 const sectionHeader = document.getElementById("sectionHeader");
 const insightHeader = document.getElementById("insightHeader");
+const token = localStorage.getItem("adminToken");
+
+if (!token) {
+  window.location.href = "login.html";
+}
 
 apiUrlInput.value = state.apiBaseUrl;
 
@@ -75,11 +79,7 @@ bootstrapData();
 document.addEventListener("click", (event) => {
   const actionButton = event.target.closest("[data-action]");
   if (actionButton) {
-    handleAction(
-      actionButton.dataset.action,
-      actionButton.dataset.id,
-      actionButton.dataset.entity,
-    );
+    handleAction(actionButton.dataset.action, actionButton.dataset.id, actionButton.dataset.entity);
     return;
   }
 
@@ -99,8 +99,7 @@ function normalizeUser(user) {
     location: user.location || "Unknown",
     isBanned: Boolean(user.isBanned),
     created_at: user.created_at || new Date().toISOString(),
-    last_active:
-      user.last_active || user.created_at || new Date().toISOString(),
+    last_active: user.last_active || user.created_at || new Date().toISOString(),
     petsCount: user.petsCount ?? user.pets?.length ?? 0,
     matchesCount: user.matchesCount ?? 0,
     createdEvents: user.createdEvents ?? 0,
@@ -121,10 +120,7 @@ function normalizePet(pet) {
     energy: pet.energy ?? 0,
     age: pet.age ?? 3,
     forAdoption: Boolean(pet.forAdoption),
-    main_photo:
-      pet.main_photo ||
-      pet.photo ||
-      "https://placehold.co/640x480/111827/f59e0b?text=Pet",
+    main_photo: pet.main_photo || pet.photo || "https://placehold.co/640x480/111827/f59e0b?text=Pet",
   };
 }
 
@@ -143,10 +139,7 @@ function normalizeMatch(match) {
     adoption_confirmed_by_owner: Boolean(match.adoption_confirmed_by_owner),
     adoption_confirmed_by_adopter: Boolean(match.adoption_confirmed_by_adopter),
     timestamp: match.timestamp || new Date().toISOString(),
-    lastMessage:
-      match.lastMessage ||
-      match.messages?.[0]?.content ||
-      "Sem mensagens ainda",
+    lastMessage: match.lastMessage || match.messages?.[0]?.content || "Sem mensagens ainda",
   };
 }
 
@@ -239,9 +232,7 @@ async function hydrateFromApi() {
 
   const messagesResult = results[5];
   if (messagesResult.status === "fulfilled") {
-    state.data.messages = Array.isArray(messagesResult.value)
-      ? messagesResult.value
-      : [];
+    state.data.messages = Array.isArray(messagesResult.value) ? messagesResult.value : [];
   } else {
     state.data.messages = [];
     errors.push(messagesResult.reason);
@@ -257,30 +248,30 @@ async function hydrateFromApi() {
 }
 
 async function fetchJson(url, label) {
-  const response = await fetch(url);
+  const token = localStorage.getItem("adminToken");
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
   const contentType = response.headers.get("content-type") || "";
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(
-      `${label} request failed (${response.status} ${response.statusText})`,
-    );
+    throw new Error(`${label} request failed (${response.status} ${response.statusText})`);
   }
 
   if (!contentType.includes("application/json")) {
     const snippet = text.replace(/\s+/g, " ").slice(0, 120);
-    throw new Error(
-      `${label} returned non-JSON response from ${url}: ${snippet || "empty body"}`,
-    );
+    throw new Error(`${label} returned non-JSON response from ${url}: ${snippet || "empty body"}`);
   }
 
   try {
     return JSON.parse(text);
   } catch {
     const snippet = text.replace(/\s+/g, " ").slice(0, 120);
-    throw new Error(
-      `${label} returned invalid JSON from ${url}: ${snippet || "empty body"}`,
-    );
+    throw new Error(`${label} returned invalid JSON from ${url}: ${snippet || "empty body"}`);
   }
 }
 
@@ -308,11 +299,7 @@ function enrichLiveStats() {
   });
 
   state.data.matches.forEach((match) => {
-    const ownerIds = [
-      match.pet1?.ownerId,
-      match.pet2?.ownerId,
-      match.adopter_id,
-    ].filter(Boolean);
+    const ownerIds = [match.pet1?.ownerId, match.pet2?.ownerId, match.adopter_id].filter(Boolean);
     ownerIds.forEach((userId) => {
       matchesByUser.set(userId, (matchesByUser.get(userId) || 0) + 1);
     });
@@ -320,10 +307,7 @@ function enrichLiveStats() {
 
   state.data.events.forEach((event) => {
     if (event.created_by) {
-      eventsByCreator.set(
-        event.created_by,
-        (eventsByCreator.get(event.created_by) || 0) + 1,
-      );
+      eventsByCreator.set(event.created_by, (eventsByCreator.get(event.created_by) || 0) + 1);
     }
   });
 
@@ -338,9 +322,11 @@ function enrichLiveStats() {
 
 async function requestJson(path, options = {}) {
   const base = state.apiBaseUrl.replace(/\/$/, "");
+  const token = localStorage.getItem("adminToken");
   const response = await fetch(`${base}${path}`, {
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
       ...(options.headers || {}),
     },
     ...options,
@@ -377,13 +363,7 @@ function filteredUsers() {
 
 function filteredPets() {
   return state.data.pets.filter((pet) => {
-    const queryMatch = [
-      pet.name,
-      pet.species,
-      pet.breed,
-      pet.ownerName,
-      pet.location,
-    ]
+    const queryMatch = [pet.name, pet.species, pet.breed, pet.ownerName, pet.location]
       .join(" ")
       .toLowerCase()
       .includes(state.query);
@@ -445,9 +425,7 @@ function activeStats() {
   const matches = state.data.matches;
   const events = state.data.events;
   const groups = state.data.groups;
-  const unreadMessages = state.data.messages.filter(
-    (message) => !message.read,
-  ).length;
+  const unreadMessages = state.data.messages.filter((message) => !message.read).length;
 
   return [
     {
@@ -479,11 +457,7 @@ function activeStats() {
 }
 
 function renderKpis() {
-  if (
-    state.syncState === "loading" &&
-    !state.data.users.length &&
-    !state.data.pets.length
-  ) {
+  if (state.syncState === "loading" && !state.data.users.length && !state.data.pets.length) {
     kpiGrid.innerHTML = Array.from({ length: 6 })
       .map(
         () => `
@@ -512,14 +486,13 @@ function renderKpis() {
 }
 
 function renderHeader(title, description, chips = []) {
-  const syncLabel =
-    state.syncState === "live"
-      ? "Live sync ready"
-      : state.syncState === "partial"
-        ? "Partial live data"
-        : state.syncState === "loading"
-          ? "Loading live data"
-          : "Live data unavailable";
+  const syncLabel = state.syncState === "live"
+    ? "Live sync ready"
+    : state.syncState === "partial"
+      ? "Partial live data"
+    : state.syncState === "loading"
+      ? "Loading live data"
+      : "Live data unavailable";
 
   return `
     <div>
@@ -537,34 +510,20 @@ function renderOverview() {
     .sort((left, right) => new Date(left.starts_at) - new Date(right.starts_at))
     .slice(0, 3);
 
-  const riskyUsers = state.data.users.filter(
-    (user) => user.isBanned || user.matchesCount === 0,
-  );
+  const riskyUsers = state.data.users.filter((user) => user.isBanned || user.matchesCount === 0);
   const hotPets = state.data.pets.filter((pet) => pet.forAdoption).slice(0, 4);
 
   sectionHeader.innerHTML = renderHeader(
     "Operations overview",
     "A quick view of activity, queue pressure and the most important moderation signals in the platform.",
     [
-      {
-        label: `${state.data.pets.filter((pet) => pet.forAdoption).length} adoption pets`,
-        className: "accent",
-      },
-      {
-        label: `${state.data.events.filter((event) => !event.cancelled).length} active events`,
-      },
-      {
-        label: `${state.data.matches.filter((match) => match.is_adoption).length} adoption chats`,
-        className: "accent",
-      },
+      { label: `${state.data.pets.filter((pet) => pet.forAdoption).length} adoption pets`, className: "accent" },
+      { label: `${state.data.events.filter((event) => !event.cancelled).length} active events` },
+      { label: `${state.data.matches.filter((match) => match.is_adoption).length} adoption chats`, className: "accent" },
     ],
   );
 
-  if (
-    state.syncState === "loading" &&
-    !state.data.users.length &&
-    !state.data.pets.length
-  ) {
+  if (state.syncState === "loading" && !state.data.users.length && !state.data.pets.length) {
     primaryContent.innerHTML = `
       <div class="card-grid">
         ${[1, 2, 3, 4]
@@ -607,23 +566,9 @@ function renderOverview() {
           </p>
           <div class="timeline">
             ${[
-              {
-                title: "Banned users",
-                value: state.data.users.filter((user) => user.isBanned).length,
-                status: "red",
-              },
-              {
-                title: "Cancelled events",
-                value: state.data.events.filter((event) => event.cancelled)
-                  .length,
-                status: "orange",
-              },
-              {
-                title: "Unmatched conversations",
-                value: state.data.matches.filter((match) => match.unmatched)
-                  .length,
-                status: "blue",
-              },
+              { title: "Banned users", value: state.data.users.filter((user) => user.isBanned).length, status: "red" },
+              { title: "Cancelled events", value: state.data.events.filter((event) => event.cancelled).length, status: "orange" },
+              { title: "Unmatched conversations", value: state.data.matches.filter((match) => match.unmatched).length, status: "blue" },
             ]
               .map(
                 (item) => `
@@ -706,26 +651,7 @@ function renderOverview() {
   insightHeader.innerHTML = renderHeader(
     "Admin playbook",
     "The backend exposes reads for users, pets, matches, messages and events, plus safe actions like cancel, unmatch and delete.",
-    [
-      {
-        label:
-          state.syncState === "live"
-            ? "Synced"
-            : state.syncState === "partial"
-              ? "Partial"
-              : state.syncState === "loading"
-                ? "Loading"
-                : "Offline",
-        className:
-          state.syncState === "live"
-            ? "green"
-            : state.syncState === "partial"
-              ? "orange"
-              : state.syncState === "loading"
-                ? "accent"
-                : "red",
-      },
-    ],
+    [{ label: state.syncState === "live" ? "Synced" : state.syncState === "partial" ? "Partial" : state.syncState === "loading" ? "Loading" : "Offline", className: state.syncState === "live" ? "green" : state.syncState === "partial" ? "orange" : state.syncState === "loading" ? "accent" : "red" }],
   );
 
   insightContent.innerHTML = `
@@ -799,22 +725,10 @@ function renderUsers() {
         </tbody>
       </table>
     `
-    : renderEmpty(
-        "No users match the current filter.",
-        "Clear the search term or switch section.",
-      );
+    : renderEmpty("No users match the current filter.", "Clear the search term or switch section.");
 
-  insightHeader.innerHTML = renderHeader(
-    "Selected user",
-    "Click a row to inspect one account in detail.",
-    [],
-  );
-  insightContent.innerHTML = renderDetailPanel(
-    state.data.users.find((user) => user.user_id === state.selected?.id) ||
-      users[0] ||
-      null,
-    "user",
-  );
+  insightHeader.innerHTML = renderHeader("Selected user", "Click a row to inspect one account in detail.", []);
+  insightContent.innerHTML = renderDetailPanel(state.data.users.find((user) => user.user_id === state.selected?.id) || users[0] || null, "user");
 }
 
 function renderPets() {
@@ -823,12 +737,7 @@ function renderPets() {
   sectionHeader.innerHTML = renderHeader(
     "Pet operations",
     "Track adoption availability, ownership and content lifecycle for each pet profile.",
-    [
-      {
-        label: `${pets.filter((pet) => pet.forAdoption).length} available`,
-        className: "green",
-      },
-    ],
+    [{ label: `${pets.filter((pet) => pet.forAdoption).length} available`, className: "green" }],
   );
 
   primaryContent.innerHTML = pets.length
@@ -871,17 +780,8 @@ function renderPets() {
     `
     : renderEmpty("No pets match the current filter.", "Try a broader search.");
 
-  insightHeader.innerHTML = renderHeader(
-    "Selected pet",
-    "Use this panel to inspect ownership and adoption state.",
-    [],
-  );
-  insightContent.innerHTML = renderDetailPanel(
-    state.data.pets.find((pet) => pet.pet_id === state.selected?.id) ||
-      pets[0] ||
-      null,
-    "pet",
-  );
+  insightHeader.innerHTML = renderHeader("Selected pet", "Use this panel to inspect ownership and adoption state.", []);
+  insightContent.innerHTML = renderDetailPanel(state.data.pets.find((pet) => pet.pet_id === state.selected?.id) || pets[0] || null, "pet");
 }
 
 function renderMatches() {
@@ -891,10 +791,7 @@ function renderMatches() {
     "Matches",
     "A compact view of matches that already happened, with a quick action to undo them if needed.",
     [
-      {
-        label: `${matches.filter((match) => match.unmatched).length} closed`,
-        className: "red",
-      },
+      { label: `${matches.filter((match) => match.unmatched).length} closed`, className: "red" },
     ],
   );
 
@@ -922,22 +819,10 @@ function renderMatches() {
           .join("")}
       </div>
     `
-    : renderEmpty(
-        "No matches found.",
-        "Clear the search field to show all matches.",
-      );
+    : renderEmpty("No matches found.", "Clear the search field to show all matches.");
 
-  insightHeader.innerHTML = renderHeader(
-    "Selected match",
-    "Use this panel to review the match and undo it if needed.",
-    [],
-  );
-  insightContent.innerHTML = renderDetailPanel(
-    state.data.matches.find((match) => match.match_id === state.selected?.id) ||
-      matches[0] ||
-      null,
-    "match",
-  );
+  insightHeader.innerHTML = renderHeader("Selected match", "Use this panel to review the match and undo it if needed.", []);
+  insightContent.innerHTML = renderDetailPanel(state.data.matches.find((match) => match.match_id === state.selected?.id) || matches[0] || null, "match");
 }
 
 function renderEvents() {
@@ -946,12 +831,7 @@ function renderEvents() {
   sectionHeader.innerHTML = renderHeader(
     "Event control",
     "Monitor community events, attendance pressure and cancellation status.",
-    [
-      {
-        label: `${events.filter((event) => !event.cancelled).length} active`,
-        className: "green",
-      },
-    ],
+    [{ label: `${events.filter((event) => !event.cancelled).length} active`, className: "green" }],
   );
 
   primaryContent.innerHTML = events.length
@@ -960,9 +840,7 @@ function renderEvents() {
         ${events
           .map((event) => {
             const status = getEventStatus(event);
-            const percentage = event.max_attendees
-              ? Math.round((event.attendee_count / event.max_attendees) * 100)
-              : 0;
+            const percentage = event.max_attendees ? Math.round((event.attendee_count / event.max_attendees) * 100) : 0;
             return `
               <article class="timeline-item" data-select='${JSON.stringify({ type: "event", id: event.event_id })}'>
                 <div class="entity-foot">
@@ -988,22 +866,10 @@ function renderEvents() {
           .join("")}
       </div>
     `
-    : renderEmpty(
-        "No events match the current filter.",
-        "Reset search to review all upcoming and archived events.",
-      );
+    : renderEmpty("No events match the current filter.", "Reset search to review all upcoming and archived events.");
 
-  insightHeader.innerHTML = renderHeader(
-    "Selected event",
-    "Understand attendance, lifecycle and admin status.",
-    [],
-  );
-  insightContent.innerHTML = renderDetailPanel(
-    state.data.events.find((event) => event.event_id === state.selected?.id) ||
-      events[0] ||
-      null,
-    "event",
-  );
+  insightHeader.innerHTML = renderHeader("Selected event", "Understand attendance, lifecycle and admin status.", []);
+  insightContent.innerHTML = renderDetailPanel(state.data.events.find((event) => event.event_id === state.selected?.id) || events[0] || null, "event");
 }
 
 function renderGroups() {
@@ -1044,22 +910,10 @@ function renderGroups() {
           .join("")}
       </div>
     `
-    : renderEmpty(
-        "No groups match the current filter.",
-        "Search for a broader term.",
-      );
+    : renderEmpty("No groups match the current filter.", "Search for a broader term.");
 
-  insightHeader.innerHTML = renderHeader(
-    "Selected group",
-    "See attendance pressure and ownership details.",
-    [],
-  );
-  insightContent.innerHTML = renderDetailPanel(
-    state.data.groups.find((group) => group.group_id === state.selected?.id) ||
-      groups[0] ||
-      null,
-    "group",
-  );
+  insightHeader.innerHTML = renderHeader("Selected group", "See attendance pressure and ownership details.", []);
+  insightContent.innerHTML = renderDetailPanel(state.data.groups.find((group) => group.group_id === state.selected?.id) || groups[0] || null, "group");
 }
 
 function renderModeration() {
@@ -1087,11 +941,9 @@ function renderModeration() {
                 </div>
                 <p>${item.detail}</p>
                 <div class="button-row">
-                  ${
-                    item.action
-                      ? `<button class="button button-small ${item.actionDanger ? "button-danger" : ""}" data-action="${item.action}" data-id="${item.targetId}" data-entity="${item.entity}">${item.actionLabel}</button>`
-                      : ""
-                  }
+                  ${item.action
+                    ? `<button class="button button-small ${item.actionDanger ? "button-danger" : ""}" data-action="${item.action}" data-id="${item.targetId}" data-entity="${item.entity}">${item.actionLabel}</button>`
+                    : ""}
                 </div>
               </article>
             `,
@@ -1099,16 +951,9 @@ function renderModeration() {
           .join("")}
       </div>
     `
-    : renderEmpty(
-        "No moderation items right now.",
-        "That means the platform is in a healthy state.",
-      );
+    : renderEmpty("No moderation items right now.", "That means the platform is in a healthy state.");
 
-  insightHeader.innerHTML = renderHeader(
-    "Moderation notes",
-    "This queue is derived from the current in-memory snapshot.",
-    [],
-  );
+  insightHeader.innerHTML = renderHeader("Moderation notes", "This queue is derived from the current in-memory snapshot.", []);
   insightContent.innerHTML = `
     <div class="insight-block">
       <div class="detail-card">
@@ -1135,10 +980,7 @@ function renderModeration() {
 
 function renderDetailPanel(item, type) {
   if (!item) {
-    return renderEmpty(
-      "No item selected.",
-      "Click a row or card to inspect it here.",
-    );
+    return renderEmpty("No item selected.", "Click a row or card to inspect it here.");
   }
 
   if (type === "user") {
@@ -1189,31 +1031,20 @@ function renderDetailPanel(item, type) {
     const primaryPet = item.pet1?.name ? item.pet1 : item.pet2;
     const secondaryPet = item.is_adoption ? primaryPet : item.pet2;
     const adopterName = getMatchTutorName(item);
-    const tutorInitials =
-      adopterName
-        .split(/[\s._-]+/)
-        .filter(Boolean)
-        .map((part) => part[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase() || "TU";
+    const tutorInitials = adopterName
+      .split(/[\s._-]+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "TU";
 
-    const renderMiniCard = ({
-      title,
-      name,
-      meta,
-      image,
-      imageAlt,
-      initials,
-      details,
-    }) => `
+    const renderMiniCard = ({ title, name, meta, image, imageAlt, initials, details }) => `
       <div class="match-mini-card">
         <div class="match-mini-head">
-          ${
-            image
-              ? `<img class="pet-thumb" src="${image}" alt="${imageAlt}" />`
-              : `<div class="match-mini-avatar">${initials}</div>`
-          }
+          ${image
+            ? `<img class="pet-thumb" src="${image}" alt="${imageAlt}" />`
+            : `<div class="match-mini-avatar">${initials}</div>`}
           <div class="match-mini-meta">
             <p class="eyebrow">${title}</p>
             <h4>${name}</h4>
@@ -1344,8 +1175,7 @@ function buildModerationQueue() {
       queue.push({
         title: `Banned account: ${user.username}`,
         context: user.email,
-        detail:
-          "Keep this account under review until the trust team confirms the status or removes the restriction.",
+        detail: "Keep this account under review until the trust team confirms the status or removes the restriction.",
         severity: "high",
         action: "toggle-user-ban",
         actionLabel: "Unban",
@@ -1355,19 +1185,12 @@ function buildModerationQueue() {
     });
 
   state.data.matches
-    .filter(
-      (match) =>
-        match.is_adoption &&
-        !match.unmatched &&
-        !match.adoption_confirmed_by_owner &&
-        !match.adoption_confirmed_by_adopter,
-    )
+    .filter((match) => match.is_adoption && !match.unmatched && !match.adoption_confirmed_by_owner && !match.adoption_confirmed_by_adopter)
     .forEach((match) => {
       queue.push({
         title: `Pending adoption: ${match.pet1.name} and ${match.pet2.name}`,
         context: match.adopter_name || "Adoption conversation",
-        detail:
-          "Two-sided confirmation is still pending. Keep the thread visible to both parties.",
+        detail: "Two-sided confirmation is still pending. Keep the thread visible to both parties.",
         severity: "medium",
         action: "unmatch",
         actionLabel: "Close match",
@@ -1400,8 +1223,7 @@ function buildModerationQueue() {
       queue.push({
         title: `High-energy adoption pet: ${pet.name}`,
         context: pet.ownerName,
-        detail:
-          "This profile is active and may benefit from surfacing in moderation or feature rotations.",
+        detail: "This profile is active and may benefit from surfacing in moderation or feature rotations.",
         severity: "low",
         action: "toggle-pet",
         actionLabel: "Toggle adoption",
@@ -1448,7 +1270,7 @@ async function handleAction(action, id) {
         return;
       }
 
-      await requestJson(`/users/${id}`, {
+      await requestJson(`/admin/users/${id}`, {
         method: "PUT",
         body: JSON.stringify({ isBanned: !user.isBanned }),
       });
@@ -1458,16 +1280,16 @@ async function handleAction(action, id) {
         return;
       }
 
-      await requestJson(`/pets/${id}`, {
+      await requestJson(`/admin/pets/${id}`, {
         method: "PUT",
         body: JSON.stringify({ forAdoption: !pet.forAdoption }),
       });
     } else if (action === "cancel-event") {
-      await requestJson(`/events/${id}/cancel`, {
+      await requestJson(`/admin/events/${id}/cancel`, {
         method: "PATCH",
       });
     } else if (action === "unmatch") {
-      await requestJson(`/matches/${id}`, {
+      await requestJson(`/admin/matches/${id}`, {
         method: "PUT",
         body: JSON.stringify({ unmatched_by: "admin" }),
       });
@@ -1477,9 +1299,7 @@ async function handleAction(action, id) {
         return;
       }
 
-      const confirmed = window.confirm(
-        `Delete ${pet.name}? This also removes local cards that reference the pet.`,
-      );
+      const confirmed = window.confirm(`Delete ${pet.name}? This also removes local cards that reference the pet.`);
       if (!confirmed) {
         return;
       }
