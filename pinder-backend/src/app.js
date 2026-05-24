@@ -21,6 +21,7 @@ const setupChatSockets = require("./sockets/chat.socket");
 const eventRoutes = require("./routes/event.routes");
 const app = express();
 const server = http.createServer(app);
+const adminRoutes = require("./routes/admin.routes");
 
 // --- Middlewares ---
 app.use(cors()); // Permite que o seu front-end acesse a API
@@ -40,6 +41,7 @@ app.use("/districts", districtRoutes);
 app.use("/recommendations", recommendationRoutes);
 app.use("/events", eventRoutes);
 app.use("/upload", uploadRoutes);
+app.use("/admin", adminRoutes);
 
 // Rota de teste inicial
 app.get("/", (req, res) => {

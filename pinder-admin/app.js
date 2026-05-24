@@ -31,6 +31,11 @@ const primaryContent = document.getElementById("primaryContent");
 const insightContent = document.getElementById("insightContent");
 const sectionHeader = document.getElementById("sectionHeader");
 const insightHeader = document.getElementById("insightHeader");
+const token = localStorage.getItem("adminToken");
+
+if (!token) {
+  window.location.href = "login.html";
+}
 
 apiUrlInput.value = state.apiBaseUrl;
 
@@ -243,7 +248,13 @@ async function hydrateFromApi() {
 }
 
 async function fetchJson(url, label) {
-  const response = await fetch(url);
+  const token = localStorage.getItem("adminToken");
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
   const contentType = response.headers.get("content-type") || "";
   const text = await response.text();
 
@@ -311,9 +322,11 @@ function enrichLiveStats() {
 
 async function requestJson(path, options = {}) {
   const base = state.apiBaseUrl.replace(/\/$/, "");
+  const token = localStorage.getItem("adminToken");
   const response = await fetch(`${base}${path}`, {
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
       ...(options.headers || {}),
     },
     ...options,
@@ -1257,7 +1270,7 @@ async function handleAction(action, id) {
         return;
       }
 
-      await requestJson(`/users/${id}`, {
+      await requestJson(`/admin/users/${id}`, {
         method: "PUT",
         body: JSON.stringify({ isBanned: !user.isBanned }),
       });
@@ -1267,16 +1280,16 @@ async function handleAction(action, id) {
         return;
       }
 
-      await requestJson(`/pets/${id}`, {
+      await requestJson(`/admin/pets/${id}`, {
         method: "PUT",
         body: JSON.stringify({ forAdoption: !pet.forAdoption }),
       });
     } else if (action === "cancel-event") {
-      await requestJson(`/events/${id}/cancel`, {
+      await requestJson(`/admin/events/${id}/cancel`, {
         method: "PATCH",
       });
     } else if (action === "unmatch") {
-      await requestJson(`/matches/${id}`, {
+      await requestJson(`/admin/matches/${id}`, {
         method: "PUT",
         body: JSON.stringify({ unmatched_by: "admin" }),
       });
