@@ -205,12 +205,6 @@ input {
   font-weight: 800;
 }
 
-.button-secondary {
-  width: auto;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--soft);
-}
-
 .small-note {
   margin: 12px 0 0;
   color: var(--muted);

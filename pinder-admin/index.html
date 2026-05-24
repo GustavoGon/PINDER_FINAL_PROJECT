@@ -36,6 +36,17 @@
         </nav>
 
         <section class="sidebar-card">
+          <p class="eyebrow">Runtime</p>
+          <h2>Live data bridge</h2>
+          <label class="field-label" for="apiUrl">API base URL</label>
+          <input id="apiUrl" class="input" type="text" value="http://localhost:3000" />
+          <button id="syncApi" class="button button-primary">Try live sync</button>
+          <p class="small-note">
+            The app starts with seeded data and can try to hydrate from the existing backend routes.
+          </p>
+        </section>
+
+        <section class="sidebar-card accent-card">
           <p class="eyebrow">Admin focus</p>
           <h2>Moderation first</h2>
           <p>
@@ -55,7 +66,6 @@
             <div class="search-wrap">
               <input id="search" class="input search" type="search" placeholder="Search users, pets, events..." />
             </div>
-            <button id="refreshData" class="button button-small button-secondary">Refresh</button>
             <div class="pill">Local mode</div>
           </div>
         </header>
