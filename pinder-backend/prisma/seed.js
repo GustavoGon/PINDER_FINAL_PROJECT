@@ -250,63 +250,65 @@ async function main() {
       );
     }
     // 🐶 Pets + Photos
-    console.log("🌱 Seeding pets...");
-    for (const user of users) {
-      const numPets = faker.number.int({ min: 1, max: 3 });
+    if (WITH_PETS || FULL_SEED) {
+      console.log("🌱 Seeding pets...");
+      for (const user of users) {
+        const numPets = faker.number.int({ min: 1, max: 3 });
 
-      for (let i = 0; i < numPets; i++) {
-        const species = faker.helpers.arrayElement(speciesList);
-        const speciesBreeds = breedsBySpecies[species.species_id] || [];
+        for (let i = 0; i < numPets; i++) {
+          const species = faker.helpers.arrayElement(speciesList);
+          const speciesBreeds = breedsBySpecies[species.species_id] || [];
 
-        if (!speciesBreeds.length) continue;
+          if (!speciesBreeds.length) continue;
 
-        const breed = faker.helpers.arrayElement(speciesBreeds);
+          const breed = faker.helpers.arrayElement(speciesBreeds);
 
-        const pet = await prisma.pet.create({
-          data: generatePet(
-            user.user_id,
-            species.species_id,
-            breed.breed_id,
-            species.name,
-          ),
-        });
+          const pet = await prisma.pet.create({
+            data: generatePet(
+              user.user_id,
+              species.species_id,
+              breed.breed_id,
+              species.name,
+            ),
+          });
 
-        const petPrefs = getRandomPreferences(
-          faker.number.int({ min: 2, max: 4 }),
-        );
+          const petPrefs = getRandomPreferences(
+            faker.number.int({ min: 2, max: 4 }),
+          );
 
-        await prisma.petPreference.createMany({
-          data: petPrefs.map((prefKey) => ({
+          await prisma.petPreference.createMany({
+            data: petPrefs.map((prefKey) => ({
+              pet_id: pet.pet_id,
+              preference_id: prefMap[prefKey],
+              weight: Math.random() * 0.5 + 0.5,
+            })),
+          });
+
+          const photos = Array.from({
+            length: faker.number.int({ min: 1, max: 3 }),
+          }).map((_, i) => ({
             pet_id: pet.pet_id,
+            url: generatePhoto(species.name),
+            photo_nr: i + 1,
+          }));
+
+          await prisma.petPhoto.createMany({ data: photos });
+        }
+
+        const userPrefs = getRandomPreferences(3);
+
+        await prisma.userPreference.createMany({
+          data: userPrefs.map((prefKey) => ({
+            user_id: user.user_id,
             preference_id: prefMap[prefKey],
-            weight: Math.random() * 0.5 + 0.5,
+            weight: Math.random() * 0.5 + 0.7,
           })),
+          skipDuplicates: true, // 🔥 REQUIRED
         });
-
-        const photos = Array.from({
-          length: faker.number.int({ min: 1, max: 3 }),
-        }).map((_, i) => ({
-          pet_id: pet.pet_id,
-          url: generatePhoto(species.name),
-          photo_nr: i + 1,
-        }));
-
-        await prisma.petPhoto.createMany({ data: photos });
       }
 
-      const userPrefs = getRandomPreferences(3);
-
-      await prisma.userPreference.createMany({
-        data: userPrefs.map((prefKey) => ({
-          user_id: user.user_id,
-          preference_id: prefMap[prefKey],
-          weight: Math.random() * 0.5 + 0.7,
-        })),
-        skipDuplicates: true, // 🔥 REQUIRED
-      });
+      console.log("✅ Advanced seed completed!");
     }
-
-    console.log("✅ Advanced seed completed!");
   }
 }
 
