@@ -13,6 +13,14 @@ const {
   getRandomPreferences,
 } = require("./seed.utils");
 
+const args = process.argv;
+
+const WITH_USERS = args.includes("--with-users");
+
+const WITH_PETS = args.includes("--with-pets");
+
+const FULL_SEED = args.includes("--full");
+
 const PREFERENCES = [
   { id: "pref_playful", label: "Playful" },
   { id: "pref_calm", label: "Calm" },
@@ -174,130 +182,132 @@ async function main() {
 
   console.log("✅ Admins created");
 
-  // Insert all fixed users
-  const fixedUsers = [];
+  if (WITH_USERS || FULL_SEED) {
+    // Insert all fixed users
+    const fixedUsers = [];
 
-  for (const userData of [...fixedUsersData]) {
-    const hashedPassword = await bcrypt.hash("123456", 10);
-    const user = await prisma.user.create({
-      data: {
-        ...userData,
-        password: hashedPassword,
-        isBanned: false,
-      },
-    });
-
-    fixedUsers.push(user);
-  }
-
-  console.log("🌱 Creating pets for fixed users...");
-
-  for (const user of fixedUsers) {
-    const species = speciesList[0]; // Dog (safe default)
-    const breed = breedsBySpecies[species.species_id][0];
-
-    const pet = await prisma.pet.create({
-      data: generatePet(user.user_id, species.species_id, breed.breed_id),
-    });
-
-    // Add preferences (reuse your logic)
-    const petPrefs = getRandomPreferences(3);
-
-    await prisma.petPreference.createMany({
-      data: petPrefs.map((prefKey) => ({
-        pet_id: pet.pet_id,
-        preference_id: prefMap[prefKey],
-        weight: faker.helpers.weightedArrayElement([
-          { weight: 1, value: 0.5 },
-          { weight: 2, value: 0.8 },
-          { weight: 3, value: 1.0 },
-        ]),
-      })),
-    });
-  }
-  console.log("🌱 Assigning preferences to fixed users...");
-
-  for (const user of fixedUsers) {
-    const userPrefs = getRandomPreferences(3);
-
-    await prisma.userPreference.createMany({
-      data: userPrefs.map((prefKey) => ({
-        user_id: user.user_id,
-        preference_id: prefMap[prefKey],
-        weight: Math.random() * 0.5 + 0.7,
-      })),
-      skipDuplicates: true, // 🔥 REQUIRED
-    });
-  }
-
-  console.log("✅ Fixed users created");
-  const users = [...fixedUsers];
-
-  for (let i = 0; i < process.env.NUM_USERS; i++) {
-    users.push(
-      await prisma.user.create({
-        data: await generateUser(),
-      }),
-    );
-  }
-  // 🐶 Pets + Photos
-  console.log("🌱 Seeding pets...");
-  for (const user of users) {
-    const numPets = faker.number.int({ min: 1, max: 3 });
-
-    for (let i = 0; i < numPets; i++) {
-      const species = faker.helpers.arrayElement(speciesList);
-      const speciesBreeds = breedsBySpecies[species.species_id] || [];
-
-      if (!speciesBreeds.length) continue;
-
-      const breed = faker.helpers.arrayElement(speciesBreeds);
-
-      const pet = await prisma.pet.create({
-        data: generatePet(
-          user.user_id,
-          species.species_id,
-          breed.breed_id,
-          species.name,
-        ),
+    for (const userData of [...fixedUsersData]) {
+      const hashedPassword = await bcrypt.hash("123456", 10);
+      const user = await prisma.user.create({
+        data: {
+          ...userData,
+          password: hashedPassword,
+          isBanned: false,
+        },
       });
 
-      const petPrefs = getRandomPreferences(
-        faker.number.int({ min: 2, max: 4 }),
-      );
+      fixedUsers.push(user);
+    }
+
+    console.log("🌱 Creating pets for fixed users...");
+
+    for (const user of fixedUsers) {
+      const species = speciesList[0]; // Dog (safe default)
+      const breed = breedsBySpecies[species.species_id][0];
+
+      const pet = await prisma.pet.create({
+        data: generatePet(user.user_id, species.species_id, breed.breed_id),
+      });
+
+      // Add preferences (reuse your logic)
+      const petPrefs = getRandomPreferences(3);
 
       await prisma.petPreference.createMany({
         data: petPrefs.map((prefKey) => ({
           pet_id: pet.pet_id,
           preference_id: prefMap[prefKey],
-          weight: Math.random() * 0.5 + 0.5,
+          weight: faker.helpers.weightedArrayElement([
+            { weight: 1, value: 0.5 },
+            { weight: 2, value: 0.8 },
+            { weight: 3, value: 1.0 },
+          ]),
         })),
       });
+    }
+    console.log("🌱 Assigning preferences to fixed users...");
 
-      const photos = Array.from({
-        length: faker.number.int({ min: 1, max: 3 }),
-      }).map((_, i) => ({
-        pet_id: pet.pet_id,
-        url: generatePhoto(species.name),
-        photo_nr: i + 1,
-      }));
+    for (const user of fixedUsers) {
+      const userPrefs = getRandomPreferences(3);
 
-      await prisma.petPhoto.createMany({ data: photos });
+      await prisma.userPreference.createMany({
+        data: userPrefs.map((prefKey) => ({
+          user_id: user.user_id,
+          preference_id: prefMap[prefKey],
+          weight: Math.random() * 0.5 + 0.7,
+        })),
+        skipDuplicates: true, // 🔥 REQUIRED
+      });
     }
 
-    const userPrefs = getRandomPreferences(3);
+    console.log("✅ Fixed users created");
+    const users = [...fixedUsers];
 
-    await prisma.userPreference.createMany({
-      data: userPrefs.map((prefKey) => ({
-        user_id: user.user_id,
-        preference_id: prefMap[prefKey],
-        weight: Math.random() * 0.5 + 0.7,
-      })),
-      skipDuplicates: true, // 🔥 REQUIRED
-    });
+    for (let i = 0; i < process.env.NUM_USERS; i++) {
+      users.push(
+        await prisma.user.create({
+          data: await generateUser(),
+        }),
+      );
+    }
+    // 🐶 Pets + Photos
+    console.log("🌱 Seeding pets...");
+    for (const user of users) {
+      const numPets = faker.number.int({ min: 1, max: 3 });
+
+      for (let i = 0; i < numPets; i++) {
+        const species = faker.helpers.arrayElement(speciesList);
+        const speciesBreeds = breedsBySpecies[species.species_id] || [];
+
+        if (!speciesBreeds.length) continue;
+
+        const breed = faker.helpers.arrayElement(speciesBreeds);
+
+        const pet = await prisma.pet.create({
+          data: generatePet(
+            user.user_id,
+            species.species_id,
+            breed.breed_id,
+            species.name,
+          ),
+        });
+
+        const petPrefs = getRandomPreferences(
+          faker.number.int({ min: 2, max: 4 }),
+        );
+
+        await prisma.petPreference.createMany({
+          data: petPrefs.map((prefKey) => ({
+            pet_id: pet.pet_id,
+            preference_id: prefMap[prefKey],
+            weight: Math.random() * 0.5 + 0.5,
+          })),
+        });
+
+        const photos = Array.from({
+          length: faker.number.int({ min: 1, max: 3 }),
+        }).map((_, i) => ({
+          pet_id: pet.pet_id,
+          url: generatePhoto(species.name),
+          photo_nr: i + 1,
+        }));
+
+        await prisma.petPhoto.createMany({ data: photos });
+      }
+
+      const userPrefs = getRandomPreferences(3);
+
+      await prisma.userPreference.createMany({
+        data: userPrefs.map((prefKey) => ({
+          user_id: user.user_id,
+          preference_id: prefMap[prefKey],
+          weight: Math.random() * 0.5 + 0.7,
+        })),
+        skipDuplicates: true, // 🔥 REQUIRED
+      });
+    }
+
+    console.log("✅ Advanced seed completed!");
   }
-
-  console.log("✅ Advanced seed completed!");
 }
 
 async function seedDogs(dogSpecies) {
