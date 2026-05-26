@@ -24,6 +24,7 @@ import { useRouter } from 'expo-router';
 
 import BottomNav from '../src/components/BottomNav';
 import { useActiveProfile } from '../src/contexts/ActiveProfileContext';
+import { calculateDistance, getNearbyParks, type ParkSpot } from '../src/services/parkDiscovery';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -65,13 +66,6 @@ interface PetItem {
   main_photo: string | null;
   species?: { name?: string | null } | null;
   breed?: { name?: string | null } | null;
-}
-
-interface ParkSpot {
-  id: string;
-  name: string;
-  latitude: number;
-  longitude: number;
 }
 
 interface Region {
@@ -285,20 +279,6 @@ export default function GruposEventos() {
     setMapRegion(getMapRegionFromRadius(userLocation.latitude, userLocation.longitude, radius));
   }, [radius, userLocation]);
 
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
-
   const buildPreviewPoint = (latitude: number, longitude: number): { left: `${number}%`; top: `${number}%` } => {
     if (!mapRegion) {
       return { left: '50%', top: '50%' };
@@ -395,56 +375,10 @@ export default function GruposEventos() {
     }
 
     try {
-      const radiusMeters = Math.min(radius * 1000, 50000);
       console.info('[Events] A carregar parques proximos', {
         radiusKm: radius,
-        radiusMeters,
       });
-
-      const query = `[out:json][timeout:15];(
-        node["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        way["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        relation["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        node["landuse"="forest"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        way["landuse"="forest"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        relation["landuse"="forest"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        node["natural"~"^(wood|tree_row)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        way["natural"~"^(wood|tree_row)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        relation["natural"~"^(wood|tree_row)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-      );out center 20;`;
-
-      const response = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `data=${encodeURIComponent(query)}`,
-      });
-
-      if (!response.ok) {
-        console.warn(`Overpass indisponivel (status ${response.status}). A continuar sem parques.`);
-        setParks([]);
-        return;
-      }
-
-      const payload = await response.json();
-      const mapped: ParkSpot[] = (payload.elements || [])
-        .map((element: any) => {
-          const latitude = element.lat ?? element.center?.lat;
-          const longitude = element.lon ?? element.center?.lon;
-          const name = element.tags?.name || 'Parque';
-
-          if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-            return null;
-          }
-
-          return {
-            id: `park-${element.type}-${element.id}`,
-            name,
-            latitude,
-            longitude,
-          } as ParkSpot;
-        })
-        .filter((park: ParkSpot | null): park is ParkSpot => park !== null)
-        .slice(0, 20);
+      const mapped = await getNearbyParks(userLocation, radius);
 
       setParks(mapped);
       console.info('[Events] Parques carregados', {
@@ -528,13 +462,11 @@ export default function GruposEventos() {
       ...visibleMapEvents.slice(0, 6).map(
         (event) => `markers=color:0xE87A4D|label:E|${event.latitude},${event.longitude}`,
       ),
-      ...parks.slice(0, 8).map((park) => `markers=size:mid|color:0x1B8F5A|label:P|${park.latitude},${park.longitude}`),
     ].filter((marker): marker is string => Boolean(marker));
 
     const style = [
       'feature:poi|visibility:off',
       'feature:transit|visibility:off',
-      'feature:poi.park|element:geometry|color:0xd6ead8',
       'feature:landscape|element:geometry|color:0xf4f1ea',
       'feature:water|element:geometry|color:0xd9edf5',
       'feature:road|element:geometry|color:0xffffff',
@@ -545,7 +477,7 @@ export default function GruposEventos() {
     }&path=${encodeURIComponent(`fillcolor:0x2E8B7A22|color:0x2E8B7A88|weight:2|${radiusCircle}`)}${
       markers.length > 0 ? `&${markers.map((marker) => encodeURIComponent(marker)).join('&')}` : ''
     }&key=${encodeURIComponent(googleMapsApiKey)}`;
-  }, [mapRegion, parks, radius, userLocation, visibleMapEvents]);
+  }, [mapRegion, radius, userLocation, visibleMapEvents]);
 
   const availablePetFilters = useMemo(() => {
     const uniqueSpecies = Array.from(
@@ -1008,7 +940,7 @@ export default function GruposEventos() {
         </View>
 
         <View style={styles.sectionTwo}>
-          <Text style={styles.sectionTitle}>Mapa de eventos e parques proximos</Text>
+          <Text style={styles.sectionTitle}>Mapa de eventos e localização atual</Text>
           {staticMapUrl ? (
             <ImageBackground
               source={{ uri: staticMapUrl }}
@@ -1038,19 +970,6 @@ export default function GruposEventos() {
                 </TouchableOpacity>
               ))}
 
-              {parks.slice(0, 8).map((park) => (
-                <View
-                  key={park.id}
-                  style={[
-                    styles.previewMarker,
-                    styles.previewParkMarker,
-                    buildPreviewPoint(park.latitude, park.longitude),
-                  ]}
-                >
-                  <FontAwesome5 name="tree" size={12} color="#FFFFFF" />
-                </View>
-              ))}
-
             </ImageBackground>
           ) : (
             <View style={styles.mapPreview}>
@@ -1059,26 +978,13 @@ export default function GruposEventos() {
 
               <View style={styles.mapGrid} />
 
-              {parks.slice(0, 6).map((park) => (
-                <View
-                  key={park.id}
-                  style={[
-                    styles.previewMarker,
-                    styles.previewParkMarker,
-                    buildPreviewPoint(park.latitude, park.longitude),
-                  ]}
-                >
-                  <FontAwesome5 name="tree" size={12} color="#FFFFFF" />
-                </View>
-              ))}
-
             </View>
           )}
 
           <View style={styles.legendRow}>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: '#57B2A1' }]} />
-              <Text style={styles.legendText}>Parques</Text>
+              <Text style={styles.legendText}>Local atual</Text>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: '#E87A4D' }]} />

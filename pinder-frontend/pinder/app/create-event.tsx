@@ -20,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 
 import { useActiveProfile } from '../src/contexts/ActiveProfileContext';
+import { calculateDistance, getNearbyParks, type ParkSpot } from '../src/services/parkDiscovery';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -35,13 +36,6 @@ type FormState = {
   hasEndAt: boolean;
   endsDate: Date;
   endsTime: Date;
-};
-
-type ParkSpot = {
-  id: string;
-  name: string;
-  latitude: number;
-  longitude: number;
 };
 
 type LocationSuggestion = {
@@ -137,20 +131,6 @@ const buildCirclePath = (latitude: number, longitude: number, radiusKm: number) 
   return points.join('|');
 };
 
-const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const earthRadiusKm = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return earthRadiusKm * c;
-};
-
 export default function CreateEventScreen() {
   const router = useRouter();
   const { activeProfile } = useActiveProfile();
@@ -244,66 +224,7 @@ export default function CreateEventScreen() {
 
     try {
       setLoadingParks(true);
-      const radiusMeters = Math.min(radius * 1000, 50000);
-      const query = `[out:json][timeout:15];(
-        node["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        way["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        relation["leisure"~"^(park|garden|recreation_ground|dog_park)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        node["landuse"="forest"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        way["landuse"="forest"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        relation["landuse"="forest"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        node["natural"~"^(wood|tree_row)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        way["natural"~"^(wood|tree_row)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-        relation["natural"~"^(wood|tree_row)$"](around:${radiusMeters},${userLocation.latitude},${userLocation.longitude});
-      );out center 20;`;
-
-      const response = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          // Overpass prefers a descriptive User-Agent/contact so add one to reduce chance of being blocked
-          'User-Agent': 'PinderApp/1.0 (+https://pinder.app)',
-          Accept: 'application/json',
-        },
-        body: `data=${encodeURIComponent(query)}`,
-      });
-
-      // Debugging: log status for diagnosis when no parks are found during QA
-      console.debug('[fetchNearbyParks] Overpass status', response.status, 'ok?', response.ok);
-
-      if (!response.ok) {
-        setParks([]);
-        return;
-      }
-
-      const payload = await response.json();
-      console.debug('[fetchNearbyParks] elements found', Array.isArray(payload?.elements) ? payload.elements.length : 0);
-      const mapped: ParkSpot[] = (payload.elements || [])
-        .map((element: any) => {
-          const latitude = element.lat ?? element.center?.lat;
-          const longitude = element.lon ?? element.center?.lon;
-          const name =
-            element.tags?.name ||
-            element.tags?.['name:pt'] ||
-            element.tags?.short_name ||
-            element.tags?.official_name ||
-            element.tags?.operator ||
-            element.tags?.['name:en'] ||
-            'Parque sem nome';
-
-          if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-            return null;
-          }
-
-          return {
-            id: `park-${element.type}-${element.id}`,
-            name,
-            latitude,
-            longitude,
-          } as ParkSpot;
-        })
-        .filter((park: ParkSpot | null): park is ParkSpot => park !== null)
-        .slice(0, 20);
+      const mapped = await getNearbyParks(userLocation, radius);
 
       setParks(mapped);
     } catch (parksError) {
@@ -449,12 +370,9 @@ export default function CreateEventScreen() {
     return parks
       .map((p) => ({
         ...p,
-        distance:
-          typeof p.latitude === 'number' && typeof p.longitude === 'number'
-            ? calculateDistance(userLocation.latitude, userLocation.longitude, p.latitude, p.longitude)
-            : Number.MAX_SAFE_INTEGER,
+        distance: typeof p.distance === 'number' ? p.distance : calculateDistance(userLocation.latitude, userLocation.longitude, p.latitude, p.longitude),
       }))
-      .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
+      .sort((a, b) => a.distance - b.distance);
   }, [parks, userLocation]);
 
   const displayParks = loadingParks
