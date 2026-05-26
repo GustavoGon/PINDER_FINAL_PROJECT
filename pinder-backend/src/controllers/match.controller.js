@@ -16,23 +16,34 @@ exports.getMatches = async (req, res) => {
       };
     }
 
-    const matches = await prisma.match.findMany({
-      where,
-      include: {
-        pet1: { include: { owner: true } },
-        pet2: { include: { owner: true } },
-        adopter: true,
-        messages: {
-          orderBy: { timestamp: "desc" },
-          take: 1,
-        },
+    // Avoid strict `include` of `adopter` to prevent Prisma validation errors
+    const includeBase = {
+      pet1: { include: { owner: true } },
+      pet2: { include: { owner: true } },
+      messages: {
+        orderBy: { timestamp: "desc" },
+        take: 1,
       },
-    });
+    };
+
+    const matches = await prisma.match.findMany({ where, include: includeBase });
+
+    // If there are adopter_ids, fetch adopters in batch and attach to matches
+    const adopterIds = Array.from(new Set(matches.map((m) => m.adopter_id).filter(Boolean)));
+    let adoptersMap = {};
+    if (adopterIds.length > 0) {
+      const adopters = await prisma.user.findMany({ where: { user_id: { in: adopterIds } }, select: { user_id: true, username: true, isBanned: true, photo: true } });
+      adoptersMap = adopters.reduce((acc, u) => ({ ...acc, [u.user_id]: u }), {});
+    }
 
     const visibleMatches = matches.filter((match) => {
       const pet1OwnerBanned = Boolean(match.pet1?.owner?.isBanned);
       const pet2OwnerBanned = Boolean(match.pet2?.owner?.isBanned);
-      const adopterBanned = match.adopter ? Boolean(match.adopter.isBanned) : false;
+      const adopter = match.adopter_id ? adoptersMap[match.adopter_id] : null;
+      const adopterBanned = adopter ? Boolean(adopter.isBanned) : false;
+
+      // attach adopter object to the match for the response
+      match.adopter = adopter || null;
 
       return !pet1OwnerBanned && !pet2OwnerBanned && !adopterBanned;
     });

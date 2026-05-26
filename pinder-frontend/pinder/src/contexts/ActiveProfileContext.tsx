@@ -22,6 +22,7 @@ export function ActiveProfileProvider({ children }: { children: React.ReactNode 
 
   const clearSession = useCallback(async () => {
     await AsyncStorage.removeItem('user');
+    await AsyncStorage.removeItem('activeProfile');
     setActiveProfile({ type: 'tutor', id: null });
     setSessionStatus('guest');
   }, []);
@@ -34,8 +35,19 @@ export function ActiveProfileProvider({ children }: { children: React.ReactNode 
       const user = userStr ? JSON.parse(userStr) : null;
 
       if (!user) {
-        setActiveProfile({ type: 'tutor', id: null });
         setSessionStatus('guest');
+        // restore any stored activeProfile (if exists) or default to tutor
+        const storedProfileStr = await AsyncStorage.getItem('activeProfile');
+        if (storedProfileStr) {
+          try {
+            const stored = JSON.parse(storedProfileStr);
+            setActiveProfile(stored);
+          } catch (err) {
+            setActiveProfile({ type: 'tutor', id: null });
+          }
+        } else {
+          setActiveProfile({ type: 'tutor', id: null });
+        }
         return;
       }
 
@@ -58,7 +70,25 @@ export function ActiveProfileProvider({ children }: { children: React.ReactNode 
           return;
         }
 
-        setActiveProfile({ type: 'tutor', id: currentId });
+        // Prefer a previously selected active profile if present
+        const storedProfileStr = await AsyncStorage.getItem('activeProfile');
+        if (storedProfileStr) {
+          try {
+            const stored = JSON.parse(storedProfileStr);
+            // if stored profile is a pet or tutor, restore it; otherwise default
+            if (stored && (stored.type === 'tutor' || stored.type === 'pet')) {
+              // ensure tutor id defaults to current user when missing
+              if (stored.type === 'tutor' && !stored.id) stored.id = currentId;
+              setActiveProfile(stored);
+            } else {
+              setActiveProfile({ type: 'tutor', id: currentId });
+            }
+          } catch (err) {
+            setActiveProfile({ type: 'tutor', id: currentId });
+          }
+        } else {
+          setActiveProfile({ type: 'tutor', id: currentId });
+        }
         setSessionStatus('ready');
         return;
       }
@@ -71,13 +101,23 @@ export function ActiveProfileProvider({ children }: { children: React.ReactNode 
     }
   }, [API_URL, clearSession]);
 
+  // Persist activeProfile changes to storage
+  const persistSetActiveProfile = useCallback((profile: ActiveProfileType) => {
+    setActiveProfile(profile);
+    try {
+      AsyncStorage.setItem('activeProfile', JSON.stringify(profile));
+    } catch (err) {
+      console.error('Erro ao guardar activeProfile:', err);
+    }
+  }, []);
+
   // Ao iniciar a app, vai à memória do telemóvel procurar o utilizador
   useEffect(() => {
     refreshStoredUser();
   }, [refreshStoredUser]);
 
   return (
-    <ActiveProfileContext.Provider value={{ activeProfile, setActiveProfile, sessionStatus, sessionMessage, refreshStoredUser, clearSession }}>
+    <ActiveProfileContext.Provider value={{ activeProfile, setActiveProfile: persistSetActiveProfile, sessionStatus, sessionMessage, refreshStoredUser, clearSession }}>
       {children}
     </ActiveProfileContext.Provider>
   );
