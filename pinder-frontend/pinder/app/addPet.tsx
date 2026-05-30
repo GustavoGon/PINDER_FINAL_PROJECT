@@ -39,7 +39,7 @@ export default function AddPet() {
   const [description, setDescription] = useState('');
   const [forAdoption, setForAdoption] = useState(false);
   
-  const [photoPreview, setPhotoPreview] = useState("https://images.unsplash.com/photo-1543466835-00a7907e9de1?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80");
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoData, setPhotoData] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -178,7 +178,15 @@ export default function AddPet() {
           
           <View style={styles.avatarSection}>
             <TouchableOpacity style={styles.avatarWrapper} onPress={pickImage}>
-              <Image source={{ uri: photoPreview }} style={styles.avatarImage} />
+              {photoPreview ? (
+                <Image source={{ uri: photoPreview }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <FontAwesome5 name="camera" size={28} color="#8E7C6A" />
+                  <Text style={styles.avatarPlaceholderTitle}>Sem foto</Text>
+                  <Text style={styles.avatarPlaceholderSubtitle}>Toca para adicionar</Text>
+                </View>
+              )}
               <View style={styles.cameraIcon}>
                 <FontAwesome5 name="camera" size={14} color="white" />
               </View>
@@ -339,8 +347,11 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20 },
   
   avatarSection: { alignItems: 'center', marginVertical: 20 },
-  avatarWrapper: { width: 130, height: 130, borderRadius: 65, borderWidth: 4, borderColor: 'white', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
+  avatarWrapper: { width: 130, height: 130, borderRadius: 65, borderWidth: 4, borderColor: 'white', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5, overflow: 'hidden', backgroundColor: '#F1E8DB' },
   avatarImage: { width: '100%', height: '100%', borderRadius: 65 },
+  avatarPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, backgroundColor: '#F1E8DB' },
+  avatarPlaceholderTitle: { marginTop: 8, fontSize: 15, fontWeight: '700', color: '#5C4A3D' },
+  avatarPlaceholderSubtitle: { marginTop: 2, fontSize: 11, color: '#8E7C6A', textAlign: 'center' },
   cameraIcon: { position: 'absolute', bottom: 5, left: 15, backgroundColor: '#5C4A3D', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'white' },
   
   formGrid: { width: '100%', zIndex: 1 },
