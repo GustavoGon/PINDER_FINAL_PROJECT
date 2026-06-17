@@ -70,14 +70,11 @@ export function ActiveProfileProvider({ children }: { children: React.ReactNode 
           return;
         }
 
-        // Prefer a previously selected active profile if present
         const storedProfileStr = await AsyncStorage.getItem('activeProfile');
         if (storedProfileStr) {
           try {
             const stored = JSON.parse(storedProfileStr);
-            // if stored profile is a pet or tutor, restore it; otherwise default
             if (stored && (stored.type === 'tutor' || stored.type === 'pet')) {
-              // ensure tutor id defaults to current user when missing
               if (stored.type === 'tutor' && !stored.id) stored.id = currentId;
               setActiveProfile(stored);
             } else {
@@ -101,7 +98,6 @@ export function ActiveProfileProvider({ children }: { children: React.ReactNode 
     }
   }, [API_URL, clearSession]);
 
-  // Persist activeProfile changes to storage
   const persistSetActiveProfile = useCallback((profile: ActiveProfileType) => {
     setActiveProfile(profile);
     try {
@@ -111,7 +107,6 @@ export function ActiveProfileProvider({ children }: { children: React.ReactNode 
     }
   }, []);
 
-  // Ao iniciar a app, vai à memória do telemóvel procurar o utilizador
   useEffect(() => {
     refreshStoredUser();
   }, [refreshStoredUser]);

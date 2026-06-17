@@ -51,14 +51,12 @@ export default function DashboardTutor() {
 
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-// Função para lidar com a escolha da data
 const onDateChange = (event: any, selectedDate?: Date) => {
   if (Platform.OS === 'android') {
     setShowDatePicker(false);
   }
   
   if (selectedDate) {
-    // Guarda a data no mesmo formato adequado para o backend
     handleChangeText('dob', selectedDate.toISOString());
   }
 };
@@ -172,13 +170,12 @@ const onDateChange = (event: any, selectedDate?: Date) => {
     setProfileData((prev: any) => ({ ...prev, [name]: value }));
   };
 
-  // --- LÓGICA DE FOTOS ---
   const pickAvatarImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, // Permite cortar a foto num quadrado perfeito
+      allowsEditing: true, 
       aspect: [1, 1],
-      quality: 0.5, // Reduz o peso da imagem para o backend
+      quality: 0.5, 
       base64: true,
     });
 
@@ -199,7 +196,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
       setNewExtraPhotos(prev => [...prev, `data:image/jpeg;base64,${result.assets[0].base64}`]);
     }
   };
-  // ------------------------------------
 
   const handleRemoveNewPhoto = (indexToRemove: number) => setNewExtraPhotos(prev => prev.filter((_, index) => index !== indexToRemove));
   
@@ -358,7 +354,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
         
-        {/* MODAL DE APAGAR PET */}
         <Modal visible={showDeleteModal} transparent={true} animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalBox}>
@@ -381,7 +376,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
           </View>
         </Modal>
 
-        {/* MODAL DE VER FOTO */}
         <Modal visible={!!selectedPhoto} transparent={true} animationType="fade">
           <View style={styles.modalOverlayDark}>
             <TouchableOpacity style={styles.btnClosePhoto} onPress={() => setSelectedPhoto(null)}>
@@ -391,7 +385,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
           </View>
         </Modal>
 
-        {/* HEADER */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <View style={{ width: 34 }} /> 
@@ -408,10 +401,8 @@ const onDateChange = (event: any, selectedDate?: Date) => {
           </Text>
         </View>
 
-        {/* CONTEÚDO PRINCIPAL */}
         <View style={styles.content}>
           
-          {/* FOTO PRINCIPAL */}
           <View style={styles.avatarSection}>
             <TouchableOpacity style={styles.avatarWrapper} onPress={pickAvatarImage}>
               <Image 
@@ -424,7 +415,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
             </TouchableOpacity>
           </View>
 
-          {/* GALERIA (SÓ PARA PETS) */}
           {activeProfile.type === 'pet' && (
             <View style={styles.gallerySection}>
               <Text style={styles.label}>Galeria de Fotos do Pet</Text>
@@ -473,7 +463,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
             </View>
           )}
 
-          {/* FORMULÁRIO */}
           <View style={styles.formGrid}>
             
             <View style={styles.inputGroupFull}>
@@ -494,7 +483,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
     <FontAwesome5 name="calendar-alt" size={16} color="#999" />
   </TouchableOpacity>
 
-  {/* O Calendário Nativo em si */}
   {showDatePicker && (
     <DateTimePicker
       value={profileData.dob ? new Date(profileData.dob) : new Date()}
@@ -506,7 +494,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
   )}
 </View>
 
-            {/* TUTOR - DISTRITO */}
             {activeProfile.type === 'tutor' && (
               <View style={styles.inputGroupFull}>
                 <Text style={styles.label}>Localização (Distrito)</Text>
@@ -532,7 +519,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
               </View>
             )}
 
-            {/* PET - ESPECIE E RAÇA */}
             {activeProfile.type === 'pet' && (
               <>
                 <View style={styles.inputGroupFull}>
@@ -581,7 +567,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
                   )}
                 </View>
 
-                {/* GÉNERO E TAMANHO (LADO A LADO) */}
                 <View style={styles.rowGrid}>
                   <View style={styles.colHalf}>
                     <Text style={styles.label}>Gênero</Text>
@@ -600,7 +585,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
                   </View>
                 </View>
 
-                {/* ENERGIA */}
                 <View style={styles.inputGroupFull}>
                   <Text style={styles.label}>Nível de Energia (1 a 5)</Text>
                   <TextInput 
@@ -612,7 +596,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
                   />
                 </View>
 
-                {/* DESCRIÇÃO */}
                 <View style={styles.inputGroupFull}>
                   <Text style={styles.label}>Descrição</Text>
                   <TextInput 
@@ -624,7 +607,6 @@ const onDateChange = (event: any, selectedDate?: Date) => {
                   />
                 </View>
 
-                {/* SWITCH DE ADOÇÃO NATIVO */}
                 <View style={styles.switchContainer}>
                   <View style={{ flex: 1, paddingRight: 15 }}>
                     <Text style={styles.switchTitle}>Disponível para Adoção</Text>
@@ -640,14 +622,12 @@ const onDateChange = (event: any, selectedDate?: Date) => {
               </>
             )}
 
-            {/* MENSAGEM DE ERRO/SUCESSO */}
             {saveMessage ? (
               <Text style={[styles.messageText, { color: saveMessage.includes('Erro') ? '#ff4d4d' : '#4CAF50' }]}>
                 {saveMessage}
               </Text>
             ) : null}
 
-            {/* BOTÕES FINAIS */}
             <View style={styles.actionsContainer}>
               <TouchableOpacity style={styles.btnSave} onPress={handleSave} disabled={isSaving}>
                 <Text style={styles.btnSaveText}>{isSaving ? 'A guardar...' : 'Salvar Alterações'}</Text>
@@ -679,13 +659,11 @@ const styles = StyleSheet.create({
   pageSubtitle: { color: '#5C4A3D', fontSize: 18, marginTop: 15, fontWeight: 'bold', textAlign: 'center' },
   content: { paddingHorizontal: 20 },
   
-  // Avatar
   avatarSection: { alignItems: 'center', marginVertical: 20 },
   avatarWrapper: { width: 130, height: 130, borderRadius: 65, borderWidth: 4, borderColor: 'white', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
   avatarImage: { width: '100%', height: '100%', borderRadius: 65 },
   cameraIcon: { position: 'absolute', bottom: 5, left: 15, backgroundColor: '#5C4A3D', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'white' },
   
-  // Galeria
   gallerySection: { marginBottom: 20 },
   galleryScroll: { paddingBottom: 10, gap: 12 },
   galleryItem: { width: 64, height: 64, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#D6CEC3' },
@@ -695,7 +673,6 @@ const styles = StyleSheet.create({
   btnStarPhoto: { position: 'absolute', bottom: 4, left: 4, backgroundColor: 'rgba(0,0,0,0.6)', width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   btnAddPhoto: { width: 64, height: 64, borderRadius: 12, borderWidth: 1, borderColor: '#D6CEC3', alignItems: 'center', justifyContent: 'center' },
   
-  // Inputs
   formGrid: { width: '100%' },
   rowGrid: { flexDirection: 'row', gap: 15, width: '100%', marginBottom: 15 },
   colHalf: { flex: 1 },
@@ -705,16 +682,13 @@ const styles = StyleSheet.create({
   inputWrapper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#D6CEC3', borderRadius: 12, backgroundColor: 'white', paddingRight: 15 },
   innerInput: { flex: 1, padding: 15, fontSize: 16 },
   
-  // Listas suspensas (Dropdown simulado)
   inlineList: { backgroundColor: 'white', borderWidth: 1, borderColor: '#eee', borderRadius: 8, marginTop: 4, maxHeight: 150 },
   listItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
   
-  // Switch
   switchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 20, borderRadius: 16, marginTop: 5, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   switchTitle: { fontSize: 16, fontWeight: 'bold', color: '#5C4A3D', marginBottom: 4 },
   switchSubtitle: { fontSize: 12, color: '#888', lineHeight: 16 },
   
-  // Botoes
   actionsContainer: { marginTop: 25, gap: 12 },
   messageText: { textAlign: 'center', marginVertical: 10, fontWeight: 'bold', fontSize: 16 },
   btnSave: { width: '100%', padding: 16, borderRadius: 30, backgroundColor: '#5C4A3D', alignItems: 'center' },
@@ -722,7 +696,6 @@ const styles = StyleSheet.create({
   btnDeleteOutline: { width: '100%', padding: 16, borderRadius: 30, borderWidth: 2, borderColor: '#ff4d4d', alignItems: 'center' },
   btnDeleteOutlineText: { color: '#ff4d4d', fontSize: 16, fontWeight: 'bold' },
   
-  // Modais
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalBox: { backgroundColor: 'white', borderRadius: 20, padding: 25, width: '100%', maxWidth: 340, alignItems: 'center' },
   iconCircleError: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#ffe6e6', alignItems: 'center', justifyContent: 'center', marginBottom: 15 },

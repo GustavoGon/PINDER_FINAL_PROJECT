@@ -3,10 +3,6 @@ const prisma = new PrismaClient();
 
 const uploadToCloudinary = require("../utils/cloudinaryUpload");
 
-// =============================
-// USER PROFILE PHOTO
-// =============================
-
 exports.uploadUserPhoto = async (req, res) => {
   try {
     const { user_id } = req.params;

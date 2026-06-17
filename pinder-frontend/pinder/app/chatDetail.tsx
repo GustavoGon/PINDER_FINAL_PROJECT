@@ -64,7 +64,6 @@ export default function ChatDetail() {
         }
 
         if (!finalMatchId && petIdStr) {
-          // if we couldn't determine a sender pet, we'll fallback to sender_user_id (logged user)
           if (!finalSenderPetId && !realUserId) {
             setStatusMessage('Sessão inválida. Volta a iniciar sessão.');
             return;
@@ -85,7 +84,6 @@ export default function ChatDetail() {
             const directMatch = await directMatchResponse.json();
             finalMatchId = directMatch.match_id;
           } else {
-            // read server error and show it to user for easier debugging
             let text = 'Não foi possível preparar a conversa.';
             try {
               const body = await directMatchResponse.json();

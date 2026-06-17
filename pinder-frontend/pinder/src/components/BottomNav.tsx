@@ -83,7 +83,6 @@ export default function BottomNav({ activePage }: BottomNavProps) {
 
       </View>
 
-      {/* Popup para seleção de pets */}
       <PetSelectionPopup 
         visible={showPopup} 
         onClose={() => setShowPopup(false)} 

@@ -2,11 +2,10 @@ const prisma = require("../prisma");
 
 function matchHasUser(match, userId) {
   return Boolean(
-    userId && (
-      match?.pet1?.owner?.user_id === userId ||
+    userId &&
+    (match?.pet1?.owner?.user_id === userId ||
       match?.pet2?.owner?.user_id === userId ||
-      match?.adopter_id === userId
-    )
+      match?.adopter_id === userId),
   );
 }
 
@@ -16,38 +15,41 @@ async function buildConversationEntry(match, currentUserId) {
   const currentUserOwnsPet1 = pet1?.owner?.user_id === currentUserId;
   const currentUserOwnsPet2 = pet2?.owner?.user_id === currentUserId;
   const isAdoptionConversation = Boolean(match.is_adoption);
-  const isOwnerView = isAdoptionConversation && (currentUserOwnsPet1 || currentUserOwnsPet2);
-
+  const isOwnerView =
+    isAdoptionConversation && (currentUserOwnsPet1 || currentUserOwnsPet2);
 
   const otherPet = currentUserOwnsPet1 ? pet2 : pet1;
   let otherUser = otherPet?.owner;
   let adoptionView = "match";
 
-  // Corrige o caso em que o adotante não tem pet na conversa (pet_1_id == pet_2_id)
   if (isAdoptionConversation) {
     adoptionView = isOwnerView ? "received" : "sent";
 
     if (pet1 && pet2 && pet1.pet_id === pet2.pet_id && isOwnerView) {
-      // O usuário atual é o Dono do Pet. Precisamos descobrir quem é o Adotante.
       try {
         let adopterId = null;
         // 1. Tenta encontrar a primeira mensagem enviada por outra pessoa
         const messageFromOther = await prisma.message.findFirst({
-          where: { match_id: match.match_id, sender_id: { not: currentUserId } }
+          where: {
+            match_id: match.match_id,
+            sender_id: { not: currentUserId },
+          },
         });
-        
+
         if (messageFromOther && messageFromOther.sender_id) {
           adopterId = messageFromOther.sender_id;
         } else {
-          // 2. Procura a última pessoa a demonstrar interesse
           const interaction = await prisma.tutorAdoptionInteraction.findFirst({
             where: { pet_id: pet1.pet_id, like_dislike: true },
-            orderBy: { timestamp: 'desc' }
+            orderBy: { timestamp: "desc" },
           });
-          if (interaction && interaction.tutor_id) adopterId = interaction.tutor_id;
+          if (interaction && interaction.tutor_id)
+            adopterId = interaction.tutor_id;
         }
         if (adopterId) {
-          const adopter = await prisma.user.findUnique({ where: { user_id: adopterId } });
+          const adopter = await prisma.user.findUnique({
+            where: { user_id: adopterId },
+          });
           if (adopter) otherUser = adopter;
         }
       } catch (err) {
@@ -70,12 +72,16 @@ async function buildConversationEntry(match, currentUserId) {
     time: lastMessage ? lastMessage.timestamp : match.timestamp,
     lastMessageSenderId: lastMessage?.sender_id || null,
     unread: 0,
-    img: otherPet.main_photo || "https://placehold.co/150x150/eeeeee/999999?text=Sem+Foto",
+    img:
+      otherPet.main_photo ||
+      "https://placehold.co/150x150/eeeeee/999999?text=Sem+Foto",
     matchId: match.match_id,
     otherPetId: otherPet.pet_id,
     otherUserId: otherUser.user_id,
     otherUserName: otherUser.username,
-    otherUserPhoto: otherUser.photo || "https://placehold.co/100x100/eeeeee/999999?text=Sem+Avatar",
+    otherUserPhoto:
+      otherUser.photo ||
+      "https://placehold.co/100x100/eeeeee/999999?text=Sem+Avatar",
     otherUserLocation: otherUser.location || null,
     isInterested: isAdoptionConversation,
     conversationType: isAdoptionConversation ? "adoption" : "match",
@@ -106,7 +112,7 @@ exports.getAllMessages = async (req, res) => {
   }
 };
 
-// POST /messages/direct - Criar ou reutilizar uma conversa direta entre dois pets
+// POST /messages/direct
 exports.getOrCreateDirectConversation = async (req, res) => {
   try {
     const { sender_pet_id, target_pet_id, sender_user_id } = req.body;
@@ -124,7 +130,6 @@ exports.getOrCreateDirectConversation = async (req, res) => {
       adopterId = sender_user_id;
     }
 
-    // Find existing match depending on whether we have a sender pet or a sender user
     let existingMatch = null;
     if (conversationPetId) {
       existingMatch = await prisma.match.findFirst({
@@ -187,7 +192,6 @@ exports.getOrCreateDirectConversation = async (req, res) => {
       return res.json(existingMatch);
     }
 
-    // Create a new match. If no sender pet, create a self-match but set adopter_id so it's unique per tutor.
     const matchData = {
       pet_1_id: conversationPetId || target_pet_id,
       pet_2_id: target_pet_id,
@@ -230,15 +234,16 @@ exports.getMessages = async (req, res) => {
   let hasAccess = matchHasUser(match, String(userId || ""));
   if (!hasAccess && match.is_adoption) {
     try {
-      const adoptionInteraction = await prisma.tutorAdoptionInteraction.findFirst({
-        where: {
-          tutor_id: String(userId || ""),
-          pet_id: { in: [match.pet_1_id, match.pet_2_id] },
-        },
-      });
+      const adoptionInteraction =
+        await prisma.tutorAdoptionInteraction.findFirst({
+          where: {
+            tutor_id: String(userId || ""),
+            pet_id: { in: [match.pet_1_id, match.pet_2_id] },
+          },
+        });
       if (adoptionInteraction) hasAccess = true;
     } catch (err) {
-      console.error('Erro ao validar interação de adoção:', err);
+      console.error("Erro ao validar interação de adoção:", err);
     }
   }
 
@@ -273,20 +278,23 @@ exports.createMessage = async (req, res) => {
   let hasPermission = matchHasUser(match, sender_id);
   if (!hasPermission && match.is_adoption) {
     try {
-      const adoptionInteraction = await prisma.tutorAdoptionInteraction.findFirst({
-        where: {
-          tutor_id: sender_id,
-          pet_id: { in: [match.pet_1_id, match.pet_2_id] },
-        },
-      });
+      const adoptionInteraction =
+        await prisma.tutorAdoptionInteraction.findFirst({
+          where: {
+            tutor_id: sender_id,
+            pet_id: { in: [match.pet_1_id, match.pet_2_id] },
+          },
+        });
       if (adoptionInteraction) hasPermission = true;
     } catch (err) {
-      console.error('Erro ao validar interação de adoção:', err);
+      console.error("Erro ao validar interação de adoção:", err);
     }
   }
 
   if (!hasPermission) {
-    return res.status(403).json({ error: "Sem permissão para enviar mensagem nesta conversa" });
+    return res
+      .status(403)
+      .json({ error: "Sem permissão para enviar mensagem nesta conversa" });
   }
 
   const message = await prisma.message.create({
@@ -324,15 +332,16 @@ exports.markAsRead = async (req, res) => {
   let hasAccess2 = matchHasUser(match, userId);
   if (!hasAccess2 && match.is_adoption) {
     try {
-      const adoptionInteraction = await prisma.tutorAdoptionInteraction.findFirst({
-        where: {
-          tutor_id: userId,
-          pet_id: { in: [match.pet_1_id, match.pet_2_id] },
-        },
-      });
+      const adoptionInteraction =
+        await prisma.tutorAdoptionInteraction.findFirst({
+          where: {
+            tutor_id: userId,
+            pet_id: { in: [match.pet_1_id, match.pet_2_id] },
+          },
+        });
       if (adoptionInteraction) hasAccess2 = true;
     } catch (err) {
-      console.error('Erro ao validar interação de adoção:', err);
+      console.error("Erro ao validar interação de adoção:", err);
     }
   }
 
@@ -385,7 +394,7 @@ exports.getConversations = async (req, res) => {
     `;
 
     const unreadByMatchId = new Map(
-      unreadCounts.map((entry) => [entry.match_id, Number(entry.unread_count)])
+      unreadCounts.map((entry) => [entry.match_id, Number(entry.unread_count)]),
     );
 
     if (petIds.length > 0) {
@@ -408,7 +417,7 @@ exports.getConversations = async (req, res) => {
       });
 
       const builtMatches = await Promise.all(
-        matches.map((match) => buildConversationEntry(match, userId))
+        matches.map((match) => buildConversationEntry(match, userId)),
       );
 
       builtMatches.forEach((entry) => {
@@ -419,21 +428,23 @@ exports.getConversations = async (req, res) => {
       });
     }
 
-    const adoptionInteractions = await prisma.tutorAdoptionInteraction.findMany({
-      where: {
-        tutor_id: userId,
-        like_dislike: true,
-      },
-      include: {
-        pet: {
-          include: {
-            owner: true,
-            breed: true,
+    const adoptionInteractions = await prisma.tutorAdoptionInteraction.findMany(
+      {
+        where: {
+          tutor_id: userId,
+          like_dislike: true,
+        },
+        include: {
+          pet: {
+            include: {
+              owner: true,
+              breed: true,
+            },
           },
         },
+        orderBy: { timestamp: "desc" },
       },
-      orderBy: { timestamp: "desc" },
-    });
+    );
 
     for (const adoption of adoptionInteractions) {
       const directMatch = await prisma.match.findFirst({
@@ -472,7 +483,11 @@ exports.getConversations = async (req, res) => {
     }
 
     const conversations = Array.from(conversationMap.values())
-      .sort((left, right) => new Date(right._sortTimestamp).getTime() - new Date(left._sortTimestamp).getTime())
+      .sort(
+        (left, right) =>
+          new Date(right._sortTimestamp).getTime() -
+          new Date(left._sortTimestamp).getTime(),
+      )
       .map(({ _sortTimestamp, ...conversation }) => conversation);
 
     res.json(conversations);

@@ -9,7 +9,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-// Importa os contextos e componentes
 import BottomNav from '../src/components/BottomNav';
 import { useLoading } from '../src/contexts/LoadingContext';
 
@@ -141,7 +140,7 @@ export default function AddPet() {
       });
 
       if (response.ok) {
-        router.back(); // Volta à página anterior nativamente!
+        router.back(); 
       } else {
         const data = await response.json();
         setErrorMessage(data.error || 'Erro ao adicionar o pet.');
@@ -158,7 +157,6 @@ export default function AddPet() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#F5F2EB' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }} keyboardShouldPersistTaps="handled">
         
-        {/* HEADER */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <TouchableOpacity onPress={() => router.back()} style={styles.btnBack}>
@@ -173,7 +171,6 @@ export default function AddPet() {
           <Text style={styles.pageSubtitle}>Adicionar Novo Pet</Text>
         </View>
 
-        {/* CONTEÚDO PRINCIPAL */}
         <View style={styles.content}>
           
           <View style={styles.avatarSection}>
@@ -211,7 +208,6 @@ export default function AddPet() {
               )}
             </View>
 
-            {/* ESPÉCIE */}
             <View style={styles.inputGroupFull}>
               <Text style={styles.label}>Espécie</Text>
               <View style={styles.inputWrapper}>
@@ -240,7 +236,6 @@ export default function AddPet() {
               )}
             </View>
 
-            {/* RAÇA */}
             <View style={styles.inputGroupFull}>
               <Text style={styles.label}>Raça</Text>
               <View style={styles.inputWrapper}>
@@ -266,7 +261,6 @@ export default function AddPet() {
               )}
             </View>
 
-            {/* GÉNERO E TAMANHO */}
             <View style={styles.rowGrid}>
               <View style={styles.colHalf}>
                 <Text style={styles.label}>Gênero</Text>

@@ -104,7 +104,7 @@ export default function Login() {
   };
 
   return (  
-    // O KeyboardAvoidingView garante que o ecrã sobe quando o teclado abre
+
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -119,15 +119,15 @@ export default function Login() {
             placeholder="Email" 
             value={email}
             onChangeText={setEmail} 
-            keyboardType="email-address" // Abre o teclado com o "@" e o ".com" mais acessíveis
-            autoCapitalize="none" // Impede que o telemóvel ponha a primeira letra maiúscula
+            keyboardType="email-address" 
+            autoCapitalize="none" 
           />
           <TextInput 
             style={styles.inputField} 
             placeholder="Password" 
             value={password}
             onChangeText={setPassword}
-            secureTextEntry={true} // Esconde as letras como password (substitui o type="password")
+            secureTextEntry={true} 
           />
           
           {errorMessage ? (
@@ -164,7 +164,7 @@ export default function Login() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F2EB', // Fundo principal da tua app
+    backgroundColor: '#F5F2EB',
     justifyContent: 'center',
     padding: 20,
   },
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
   },
   form: {
     width: '100%',
-    maxWidth: 400, // Previne que fique gigante num iPad/Tablet
+    maxWidth: 400,
   },
   inputField: {
     backgroundColor: 'white',

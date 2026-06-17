@@ -1,13 +1,12 @@
 const prisma = require("../prisma");
 
-// GET /groups - Listar todos os grupos (com filtro por proximidade opcional)
+// GET /groups
 exports.getAllGroups = async (req, res) => {
   try {
     const { latitude, longitude, radius } = req.query;
 
     let where = {};
 
-    // Se tiver coordenadas e raio, filtrar por proximidade (simples - sem cálculo preciso de distância)
     if (latitude && longitude && radius) {
       const lat = parseFloat(latitude);
       const lng = parseFloat(longitude);
@@ -15,18 +14,28 @@ exports.getAllGroups = async (req, res) => {
 
       where = {
         AND: [
-          { latitude: { gte: lat - radiusInDegrees, lte: lat + radiusInDegrees } },
-          { longitude: { gte: lng - radiusInDegrees, lte: lng + radiusInDegrees } }
-        ]
+          {
+            latitude: {
+              gte: lat - radiusInDegrees,
+              lte: lat + radiusInDegrees,
+            },
+          },
+          {
+            longitude: {
+              gte: lng - radiusInDegrees,
+              lte: lng + radiusInDegrees,
+            },
+          },
+        ],
       };
     }
 
     const groups = await prisma.group.findMany({
       where,
       include: {
-        _count: { select: { attendees: true } }
+        _count: { select: { attendees: true } },
       },
-      orderBy: { date: 'asc' }
+      orderBy: { date: "asc" },
     });
 
     res.json(groups);
@@ -36,7 +45,7 @@ exports.getAllGroups = async (req, res) => {
   }
 };
 
-// GET /groups/:group_id - Detalhes de um grupo
+// GET /groups/:group_id
 exports.getGroupById = async (req, res) => {
   try {
     const { group_id } = req.params;
@@ -46,11 +55,11 @@ exports.getGroupById = async (req, res) => {
       include: {
         attendees: {
           include: {
-            group: false
-          }
+            group: false,
+          },
         },
-        _count: { select: { attendees: true } }
-      }
+        _count: { select: { attendees: true } },
+      },
     });
 
     if (!group) {
@@ -64,14 +73,30 @@ exports.getGroupById = async (req, res) => {
   }
 };
 
-// POST /groups - Criar novo grupo
+// POST /groups
 exports.createGroup = async (req, res) => {
   try {
-    const { title, description, date, time, location, latitude, longitude, max_attendees, image, created_by } = req.body;
+    const {
+      title,
+      description,
+      date,
+      time,
+      location,
+      latitude,
+      longitude,
+      max_attendees,
+      image,
+      created_by,
+    } = req.body;
 
     // Validar campos obrigatórios
     if (!title || !location || !latitude || !longitude || !created_by) {
-      return res.status(400).json({ error: "Campos obrigatórios: title, location, latitude, longitude, created_by" });
+      return res
+        .status(400)
+        .json({
+          error:
+            "Campos obrigatórios: title, location, latitude, longitude, created_by",
+        });
     }
 
     const group = await prisma.group.create({
@@ -85,8 +110,8 @@ exports.createGroup = async (req, res) => {
         longitude: parseFloat(longitude),
         max_attendees: max_attendees ? parseInt(max_attendees) : null,
         image,
-        created_by
-      }
+        created_by,
+      },
     });
 
     res.status(201).json(group);
@@ -96,7 +121,7 @@ exports.createGroup = async (req, res) => {
   }
 };
 
-// POST /groups/:group_id/join - User se inscreve num grupo
+// POST /groups/:group_id/join
 exports.joinGroup = async (req, res) => {
   try {
     const { group_id } = req.params;
@@ -109,25 +134,25 @@ exports.joinGroup = async (req, res) => {
     // Verificar se o grupo existe
     const group = await prisma.group.findUnique({
       where: { group_id },
-      include: { _count: { select: { attendees: true } } }
+      include: { _count: { select: { attendees: true } } },
     });
 
     if (!group) {
       return res.status(404).json({ error: "Grupo não encontrado" });
     }
 
-    // Verificar se já está inscrito
     const existingAttendee = await prisma.groupEventAttendee.findUnique({
       where: {
-        group_id_user_id: { group_id, user_id }
-      }
+        group_id_user_id: { group_id, user_id },
+      },
     });
 
     if (existingAttendee) {
-      return res.status(400).json({ error: "User já está inscrito neste grupo" });
+      return res
+        .status(400)
+        .json({ error: "User já está inscrito neste grupo" });
     }
 
-    // Verificar limite de attendees
     if (group.max_attendees && group._count.attendees >= group.max_attendees) {
       return res.status(400).json({ error: "Grupo cheio" });
     }
@@ -136,8 +161,8 @@ exports.joinGroup = async (req, res) => {
       data: {
         group_id,
         user_id,
-        pet_id: pet_id || null
-      }
+        pet_id: pet_id || null,
+      },
     });
 
     res.status(201).json(attendee);
@@ -147,7 +172,7 @@ exports.joinGroup = async (req, res) => {
   }
 };
 
-// DELETE /groups/:group_id/leave - User sai de um grupo
+// DELETE /groups/:group_id/leave
 exports.leaveGroup = async (req, res) => {
   try {
     const { group_id } = req.params;
@@ -159,18 +184,20 @@ exports.leaveGroup = async (req, res) => {
 
     const attendee = await prisma.groupEventAttendee.findUnique({
       where: {
-        group_id_user_id: { group_id, user_id }
-      }
+        group_id_user_id: { group_id, user_id },
+      },
     });
 
     if (!attendee) {
-      return res.status(404).json({ error: "User não está inscrito neste grupo" });
+      return res
+        .status(404)
+        .json({ error: "User não está inscrito neste grupo" });
     }
 
     await prisma.groupEventAttendee.delete({
       where: {
-        group_id_user_id: { group_id, user_id }
-      }
+        group_id_user_id: { group_id, user_id },
+      },
     });
 
     res.json({ message: "Removido do grupo com sucesso" });
@@ -180,7 +207,7 @@ exports.leaveGroup = async (req, res) => {
   }
 };
 
-// GET /groups/:group_id/attendees - Listar attendees de um grupo
+// GET /groups/:group_id/attendees
 exports.getGroupAttendees = async (req, res) => {
   try {
     const { group_id } = req.params;
@@ -188,8 +215,8 @@ exports.getGroupAttendees = async (req, res) => {
     const attendees = await prisma.groupEventAttendee.findMany({
       where: { group_id },
       include: {
-        group: false
-      }
+        group: false,
+      },
     });
 
     res.json(attendees);
@@ -199,7 +226,7 @@ exports.getGroupAttendees = async (req, res) => {
   }
 };
 
-// DELETE /groups/:group_id - Deletar grupo (apenas criador)
+// DELETE /groups/:group_id
 exports.deleteGroup = async (req, res) => {
   try {
     const { group_id } = req.params;
@@ -207,7 +234,7 @@ exports.deleteGroup = async (req, res) => {
     const forceDelete = req.body?.admin === true || req.query?.admin === "true";
 
     const group = await prisma.group.findUnique({
-      where: { group_id }
+      where: { group_id },
     });
 
     if (!group) {
@@ -215,11 +242,13 @@ exports.deleteGroup = async (req, res) => {
     }
 
     if (!forceDelete && group.created_by !== user_id) {
-      return res.status(403).json({ error: "Apenas o criador pode deletar o grupo" });
+      return res
+        .status(403)
+        .json({ error: "Apenas o criador pode deletar o grupo" });
     }
 
     await prisma.group.delete({
-      where: { group_id }
+      where: { group_id },
     });
 
     res.json({ message: "Grupo deletado com sucesso" });
@@ -229,7 +258,7 @@ exports.deleteGroup = async (req, res) => {
   }
 };
 
-// GET /groups/user/:user_id - Listar grupos onde user está inscrito
+// GET /groups/user/:user_id
 exports.getUserGroups = async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -239,10 +268,10 @@ exports.getUserGroups = async (req, res) => {
       include: {
         group: {
           include: {
-            _count: { select: { attendees: true } }
-          }
-        }
-      }
+            _count: { select: { attendees: true } },
+          },
+        },
+      },
     });
 
     res.json(userGroups);

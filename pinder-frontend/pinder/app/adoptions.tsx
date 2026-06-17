@@ -92,7 +92,6 @@ export default function Adoptions() {
   };
 
   const handleViewProfile = () => {
-    // Navegar para o perfil do pet (se existir rota)
     setShowActionModal(false);
     if (selectedPet?.pet.pet_id) {
       router.push({
@@ -109,7 +108,6 @@ export default function Adoptions() {
       const currentUser = userStr ? JSON.parse(userStr) : {};
       const currentUserId = currentUser.user_id || currentUser.id;
 
-      // Navegar para o chat com o dono do pet
       router.push({
         pathname: '/chatDetail',
         params: { 
@@ -133,13 +131,11 @@ export default function Adoptions() {
       activeOpacity={0.7}
     >
       <View style={styles.cardContent}>
-        {/* Foto */}
         <Image
           source={{ uri: item.pet.main_photo || 'https://placehold.co/100x100/eeeeee/999999?text=Sem+Foto' }}
           style={styles.petImage}
         />
 
-        {/* Info */}
         <View style={styles.petInfo}>
           <Text style={styles.petName}>{item.pet.name}</Text>
           <Text style={styles.breed}>{item.pet.breed?.name || 'Raça não definida'}</Text>
@@ -147,13 +143,11 @@ export default function Adoptions() {
             <FontAwesome5 name="user" size={12} color="#999" /> {item.pet.owner?.username}
           </Text>
 
-          {/* Timestamp */}
           <Text style={styles.timestamp}>
             {new Date(item.timestamp).toLocaleDateString('pt-PT')}
           </Text>
         </View>
 
-        {/* Badge de interesse */}
         <View style={styles.statusBadge}>
           <FontAwesome5 name="heart" size={20} color="#4CAF50" />
           <Text style={styles.badgeText}>Interesse</Text>
@@ -226,7 +220,6 @@ export default function Adoptions() {
         />
       </View>
 
-      {/* ACTION MODAL */}
       <Modal
         visible={showActionModal}
         transparent={true}
@@ -240,7 +233,6 @@ export default function Adoptions() {
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             {selectedPet && (
               <>
-                {/* Pet Info */}
                 <View style={styles.modalHeader}>
                   <Image
                     source={{ uri: selectedPet.pet.main_photo || 'https://placehold.co/100x100/eeeeee/999999?text=Sem+Foto' }}
@@ -255,7 +247,6 @@ export default function Adoptions() {
                   </View>
                 </View>
 
-                {/* Action Buttons */}
                 <View style={styles.modalActions}>
                   <TouchableOpacity 
                     style={[styles.actionButton, styles.viewProfileBtn]}
@@ -274,7 +265,6 @@ export default function Adoptions() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Close Button */}
                 <TouchableOpacity
                   style={styles.closeButton}
                   onPress={() => setShowActionModal(false)}

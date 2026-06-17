@@ -100,7 +100,6 @@ export default function Chat() {
         return;
       }
 
-      // Carregar os pets do utilizador para identificar se é o Dono ou Adotante em cada conversa
       try {
         const petsRes = await fetch(`${API_URL}/pets/user/${myUserId}`);
         if (petsRes.ok) {
@@ -142,7 +141,6 @@ export default function Chat() {
   };
 
   const getChatDisplayInfo = (chat: Conversation) => {
-    // Verifica se o pet na conversa pertence ao utilizador atual
     const isMyPet = myPets.some(
       (p) =>
         (chat.otherPetId && p.pet_id === chat.otherPetId) ||
@@ -166,7 +164,6 @@ export default function Chat() {
         subtitleIcon: 'paw' as const,
       };
     } else {
-      // MATCHES (Amizade) -> Vê sempre os dados do outro Pet
       return {
         avatar: chat.img || 'https://placehold.co/60x60/eeeeee/999999?text=Pet',
         title: chat.name,
@@ -237,7 +234,6 @@ export default function Chat() {
         throw new Error('Erro ao cancelar match');
       }
 
-      // remover da lista localmente
       setConversations((prev) => prev.filter((c) => c.id !== selectedConversation.id));
       setIsConfirmModalVisible(false);
       setSelectedConversation(null);

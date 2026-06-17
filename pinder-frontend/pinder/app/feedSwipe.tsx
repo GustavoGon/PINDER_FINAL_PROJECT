@@ -55,17 +55,15 @@ export default function FeedSwipe() {
     currentPetRef.current = pets[currentIndex] || null;
   }, [pets, currentIndex]);
 
-  // --- 1. CARREGAR E FILTRAR OS PETS ---
  useEffect(() => {
     const fetchFeed = async () => {
-      // Se ainda não temos o perfil ativo, paramos o loading para não ficar preso
       if (!activeProfileId) {
         setIsLoading(false);
         return; 
       }
 
       setIsLoading(true);
-      setPets([]); // Limpar pets anteriores
+      setPets([]); 
       setCurrentIndex(0);
       console.info('[Recommendations] A carregar feed', {
         mode: activeProfileType,
@@ -97,7 +95,6 @@ export default function FeedSwipe() {
             console.error("Erro do servidor:", await recommendationsResponse.text());
           }
         } 
-        // 👤 Se é TUTOR: Mostrar pets para adoção próximos
         else if (activeProfileType === 'tutor') {
           console.info('[Recommendations] Pedido para tutor', { userId: myUserId });
           

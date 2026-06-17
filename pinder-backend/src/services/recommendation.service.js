@@ -5,13 +5,12 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
   let userPrefs = [];
   let baseLocation = null;
 
-  console.info('[Recommendations] Início do scoring', {
+  console.info("[Recommendations] Início do scoring", {
     mode,
     hasPetId: Boolean(pet_id),
     hasUserId: Boolean(user_id),
   });
 
-  // 🐾 NORMAL MODE → use pet
   if (mode === "normal") {
     if (!pet_id) throw new Error("pet_id is required");
 
@@ -24,17 +23,21 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     });
 
     if (!userPet) throw new Error("Pet not found");
-    if (userPet.owner?.isBanned) throw new Error("A tua conta foi banida. Contacta o suporte para mais informações.");
+    if (userPet.owner?.isBanned)
+      throw new Error(
+        "A tua conta foi banida. Contacta o suporte para mais informações.",
+      );
 
     baseLocation = userPet.owner;
-    console.info('[Recommendations] Pet base carregado', {
+    console.info("[Recommendations] Pet base carregado", {
       petId: pet_id,
-      hasOwnerLocation: Boolean(baseLocation?.latitude && baseLocation?.longitude),
+      hasOwnerLocation: Boolean(
+        baseLocation?.latitude && baseLocation?.longitude,
+      ),
       hasOwnerDistrict: Boolean(baseLocation?.location),
     });
   }
 
-  // 🏠 ADOPTION MODE → use user
   if (mode === "adoption") {
     if (!user_id) throw new Error("user_id is required");
 
@@ -43,7 +46,10 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     });
 
     if (!user) throw new Error("User not found");
-    if (user.isBanned) throw new Error("A tua conta foi banida. Contacta o suporte para mais informações.");
+    if (user.isBanned)
+      throw new Error(
+        "A tua conta foi banida. Contacta o suporte para mais informações.",
+      );
 
     baseLocation = user;
 
@@ -51,15 +57,16 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
       where: { user_id },
     });
 
-    console.info('[Recommendations] Tutor base carregado', {
+    console.info("[Recommendations] Tutor base carregado", {
       userId: user_id,
-      hasOwnerLocation: Boolean(baseLocation?.latitude && baseLocation?.longitude),
+      hasOwnerLocation: Boolean(
+        baseLocation?.latitude && baseLocation?.longitude,
+      ),
       hasOwnerDistrict: Boolean(baseLocation?.location),
       preferenceCount: userPrefs.length,
     });
   }
 
-  // 📍 Location validation
   const hasGPS = baseLocation?.latitude && baseLocation?.longitude;
   const hasLocation = baseLocation?.location;
 
@@ -67,7 +74,6 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     throw new Error("Add location or district to profile");
   }
 
-  // 👀 Seen pets
   let seenIds = [];
   if (mode === "normal") {
     const seen = await prisma.interaction.findMany({
@@ -77,7 +83,6 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
 
     seenIds = seen.map((s) => s.target_pet_id);
   } else if (mode === "adoption") {
-    // 👀 Para modo adoption: buscar pets já interagidos
     const seen = await prisma.tutorAdoptionInteraction.findMany({
       where: { tutor_id: user_id },
       select: { pet_id: true },
@@ -86,7 +91,6 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     seenIds = seen.map((s) => s.pet_id);
   }
 
-  // 🐾 Candidates
   const candidates = await prisma.pet.findMany({
     where: {
       ...(mode === "normal" && { pet_id: { not: pet_id } }),
@@ -104,12 +108,10 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     },
   });
 
-  // 🚫 Filter
   function filterCandidates(pets, requireLocation = true) {
     return pets.filter((pet) => {
       if (seenIds.includes(pet.pet_id)) return false;
 
-      // skip same owner (normal mode and adoption mode)
       if (mode === "normal" && pet.user_id === userPet.user_id) return false;
       if (mode === "adoption" && pet.user_id === user_id) return false;
 
@@ -131,14 +133,16 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     filtered = filterCandidates(candidates, false);
   }
 
-  console.info('[Recommendations] Fase de filtragem concluída', {
+  console.info("[Recommendations] Fase de filtragem concluída", {
     mode,
     candidates: candidates.length,
     filtered: filtered.length,
-    usedRelaxedLocationFilter: filtered.length > 0 && candidates.length > 0 && filtered.length === candidates.length,
+    usedRelaxedLocationFilter:
+      filtered.length > 0 &&
+      candidates.length > 0 &&
+      filtered.length === candidates.length,
   });
 
-  // 📍 Distance
   function getDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -153,7 +157,6 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
   }
 
-  // 🧠 Preference scoring
   function scorePreferences(sourcePrefs, targetPrefs) {
     let score = 0;
 
@@ -176,7 +179,6 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     return Math.min(score, 5) * 10;
   }
 
-  // 🧠 Main scoring
   function scorePet(candidate) {
     let score = 0;
 
@@ -192,7 +194,6 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
 
     score += mode === "adoption" ? prefScore * 1.2 : prefScore * 1.5;
 
-    // Extra signals only for normal
     if (mode === "normal") {
       if (userPet.breed_id === candidate.breed_id) score += 20;
 
@@ -209,7 +210,6 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     return score;
   }
 
-  // 🧮 Final scoring
   const scored = filtered.map((pet) => {
     let distance = 0;
     let distanceScore = 0;
@@ -234,7 +234,6 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     };
   });
 
-  // 📊 Sort
   const nearby = scored
     .filter((p) => p.distance <= 100 || !hasGPS)
     .sort((a, b) => b.score - a.score);
@@ -243,7 +242,7 @@ async function getRecommendations({ pet_id, user_id, mode = "normal" }) {
     .filter((p) => p.distance > 100)
     .sort((a, b) => b.score - a.score);
 
-  console.info('[Recommendations] Ranking final preparado', {
+  console.info("[Recommendations] Ranking final preparado", {
     mode,
     nearby: nearby.length,
     distant: distant.length,

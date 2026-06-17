@@ -43,7 +43,6 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
       setUser({});
 
       try {
-        // 1. Vai buscar o utilizador à memória do telemóvel primeiro
         const userStr = await AsyncStorage.getItem("user");
         if (!userStr) {
           setError("Sessão inválida. Por favor, faz login novamente.");
@@ -55,13 +54,11 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
         setUser(currentUser);
         const userId = currentUser.user_id || currentUser.id;
 
-        // 2. Vai buscar os pets
         const petsResponse = await fetch(`${API_URL}/pets/user/${userId}`);
         if (!petsResponse.ok) throw new Error("Falha ao procurar os pets.");
         const petsData = await petsResponse.json();
         setPets(petsData);
 
-        // 3. Vai buscar a foto atualizada do Tutor
         const userResponse = await fetch(`${API_URL}/users/${userId}`);
         if (userResponse.ok) {
           const userData = await userResponse.json();
@@ -76,16 +73,15 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
     };
 
     fetchDados();
-  }, [visible]); // Reage sempre que a visibilidade muda
+  }, [visible]);
 
   return (
     <Modal
       visible={visible}
       transparent={true}
       animationType="fade"
-      onRequestClose={onClose} // Para o botão de "Voltar" do Android fechar o popup
+      onRequestClose={onClose} 
     >
-      {/* O overlay escuro que fecha o popup se clicarmos fora */}
       <TouchableOpacity 
         style={styles.overlay} 
         activeOpacity={1} 
@@ -103,7 +99,6 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
 
           <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
             
-            {/* PERFIL DO TUTOR */}
             <TouchableOpacity
               style={[
                 styles.petItem, 
@@ -131,7 +126,6 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
               )}
             </TouchableOpacity>
 
-            {/* LISTA DE PETS */}
             {isLoading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color="#5C4A3D" />
@@ -172,7 +166,6 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
             )}
           </ScrollView>
 
-          {/* BOTÃO ADICIONAR NOVO PET */}
           <TouchableOpacity 
             style={styles.btnAdd} 
             onPress={() => {

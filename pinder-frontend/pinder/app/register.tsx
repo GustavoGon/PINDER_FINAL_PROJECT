@@ -38,7 +38,6 @@ export default function Register() {
   const { setActiveProfile } = useActiveProfile();
   const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.X:3000';
 
-  // Carregar distritos ao abrir
   useEffect(() => {
     fetchDistricts();
   }, []);
@@ -59,9 +58,9 @@ export default function Register() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      aspect: [1, 1], // Mantém a foto quadrada (tipo perfil)
-      quality: 0.5, // Reduz o tamanho da imagem para não sobrecarregar o servidor
-      base64: true, // Permite enviar a imagem diretamente via JSON
+      aspect: [1, 1], 
+      quality: 0.5, 
+      base64: true, 
     });
 
     if (!result.canceled && result.assets[0].base64) {
@@ -77,7 +76,6 @@ export default function Register() {
   };
 
   const handleRegister = async () => {
-    // Validação básica antes de enviar para o servidor
     if (password.length < 6) {
       setErrorMessage('A password tem de ter pelo menos 6 caracteres.');
       return;
@@ -203,7 +201,6 @@ export default function Register() {
               />
             )}
 
-            {/* Selector de Distrito */}
             <TouchableOpacity 
               style={styles.districtButton}
               onPress={() => setShowDistrictPicker(true)}
@@ -215,7 +212,6 @@ export default function Register() {
               <FontAwesome5 name="chevron-down" size={14} color="#999" />
             </TouchableOpacity>
 
-            {/* Modal do Picker de Distritos */}
             <Modal
               visible={showDistrictPicker}
               transparent={true}
@@ -223,7 +219,6 @@ export default function Register() {
               onRequestClose={() => setShowDistrictPicker(false)}
             >
               <View style={styles.pickerContainer}>
-                {/* Fundo escuro que fecha o modal */}
                 <TouchableOpacity 
                   style={StyleSheet.absoluteFill} 
                   activeOpacity={1} 
@@ -239,7 +234,6 @@ export default function Register() {
                     <View style={{ width: 50 }} />
                   </View>
                   
-                  {/* Se a lista estiver vazia, mostramos o carregamento */}
                   {districts.length === 0 ? (
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                       <ActivityIndicator size="large" color="#ff9950" />

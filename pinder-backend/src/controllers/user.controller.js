@@ -7,7 +7,6 @@ exports.getUserById = async (req, res) => {
   try {
     const { user_id } = req.params;
 
-    // Vai buscar o utilizador à BD
     const user = await prisma.user.findUnique({
       where: { user_id: user_id },
     });
@@ -39,7 +38,6 @@ exports.createUser = async (req, res) => {
   try {
     const { username, email, password, district, dob, photo } = req.body;
 
-    // basic validation
     if (!username || !email || !password) {
       return res.status(400).json({ error: "Missing fields" });
     }
@@ -62,7 +60,6 @@ exports.createUser = async (req, res) => {
   } catch (error) {
     console.error(error);
 
-    // Prisma unique error (email/username duplicate)
     if (error.code === "P2002") {
       return res.status(400).json({ error: "User already exists" });
     }
@@ -77,22 +74,18 @@ exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1. verificar se enviaram email e password
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    // 2. Procurar o utilizador pelo email BD
     const user = await prisma.user.findUnique({
       where: { email: email },
     });
 
-    // Se o não existe, manda erro
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // 3. Compara a password enviada com a password guardada (hash)
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
@@ -151,7 +144,7 @@ exports.updateUser = async (req, res) => {
   }
 };
 
-// PUT /users/:user_id/location - Atualizar localização do user
+// PUT /users/:user_id/location
 exports.updateUserLocation = async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -163,13 +156,11 @@ exports.updateUserLocation = async (req, res) => {
         .json({ error: "Latitude e longitude são obrigatórias" });
     }
 
-    // Se location não é enviado, manter o valor anterior
     const dataToUpdate = {
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
     };
 
-    // Só atualizar location se for explicitamente enviado
     if (location !== undefined) {
       dataToUpdate.location = location;
     }

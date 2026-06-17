@@ -31,22 +31,18 @@ export default function AdoptionModal({
     >
       <View style={styles.overlay}>
         <View style={styles.container}>
-          {/* Ícone de adoção */}
           <View style={styles.iconContainer}>
             <FontAwesome5 name="heart" size={60} color="#4CAF50" />
           </View>
 
-          {/* Foto do pet */}
           <Image source={{ uri: petPhoto }} style={styles.petImage} />
 
-          {/* Texto */}
           <Text style={styles.title}>Que adorável! 🐾</Text>
           <Text style={styles.subtitle}>
             Expressaste interesse em adotar{"\n"}
             <Text style={styles.petNameHighlight}>{petName}</Text>
           </Text>
 
-          {/* Mensagem */}
           <View style={styles.messageBox}>
             <FontAwesome5 name="envelope" size={16} color="#5C4A3D" />
             <Text style={styles.messageText}>
@@ -54,7 +50,6 @@ export default function AdoptionModal({
             </Text>
           </View>
 
-          {/* Botão */}
           <TouchableOpacity style={styles.button} onPress={onClose}>
             <Text style={styles.buttonText}>Continuar a Procurar</Text>
           </TouchableOpacity>
