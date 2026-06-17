@@ -192,7 +192,7 @@ export default function FeedSwipe() {
           throw new Error('Tutor ID não encontrado');
         }
 
-        console.log(`📤 Enviando adoção: tutor=${tutorId}, pet=${swipedPet.pet_id}, like=${isLike}`);
+        console.log(`Enviando adoção: tutor=${tutorId}, pet=${swipedPet.pet_id}, like=${isLike}`);
 
         // Registar interação do tutor
         try {
@@ -208,22 +208,22 @@ export default function FeedSwipe() {
 
           if (!adoptionResponse.ok) {
             const errorText = await adoptionResponse.text();
-            console.error(`❌ Erro ${adoptionResponse.status}:`, errorText);
+            console.error(`Erro ${adoptionResponse.status}:`, errorText);
             throw new Error(`HTTP ${adoptionResponse.status}`);
           }
 
           const adoptionData = await adoptionResponse.json();
-          console.log(`✅ Adoção guardada:`, adoptionData);
+          console.log(`Adoção guardada:`, adoptionData);
           savedSuccessfully = true;
 
           if (isLike) {
             setMatchedPet(swipedPet);
             setShowMatchModal(true);
           } else {
-            console.log(`❌ Tutor rejeitou: ${swipedPet.name}`);
+            console.log(`Tutor rejeitou: ${swipedPet.name}`);
           }
         } catch (error) {
-          console.error(`🔴 Erro ao guardar adoção:`, error);
+          console.error(`Erro ao guardar adoção:`, error);
         }
       } 
       // 🐾 Se é PET: registrar interação normal

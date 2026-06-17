@@ -53,7 +53,7 @@ function askQuestion(question) {
 }
 
 async function main() {
-  console.log("🌱 Seeding advanced data...");
+  console.log("Seeding advanced data...");
 
   const shouldReset = process.env.RESET_DB === "true";
 
@@ -69,9 +69,9 @@ async function main() {
     await prisma.breed.deleteMany();
     await prisma.species.deleteMany();
   }
-  console.log("🌱 Deleted old data...");
+  console.log("Deleted old data...");
 
-  console.log("🌱 Seeding texts + preferences...");
+  console.log("Seeding texts + preferences...");
 
   // Clean
   await prisma.preference.deleteMany();
@@ -105,7 +105,7 @@ async function main() {
     prefMap[PREFERENCES[index].id] = pref.preference_id;
   });
 
-  console.log("✅ Preferences ready");
+  console.log("Preferences ready");
 
   // 🐾 Species (only if empty or reset)
   let dogSpecies, catSpecies;
@@ -113,7 +113,7 @@ async function main() {
   const existingSpecies = await prisma.species.findMany();
 
   if (existingSpecies.length === 0) {
-    console.log("🌱 Seeding species...");
+    console.log("Seeding species...");
     dogSpecies = await prisma.species.create({
       data: { name: "Dog" },
     });
@@ -121,24 +121,22 @@ async function main() {
     catSpecies = await prisma.species.create({
       data: { name: "Cat" },
     });
-    console.log("🌱 Seeding breeds...");
+    console.log("Seeding breeds...");
     await seedDogs(dogSpecies);
     await seedCats(catSpecies);
   } else {
-    console.log("⚡ Using existing species & breeds");
+    console.log("Using existing species & breeds");
 
     dogSpecies = existingSpecies.find((s) => s.name === "Dog");
     catSpecies = existingSpecies.find((s) => s.name === "Cat");
   }
 
-  // ✅ Load once
   const speciesList = await prisma.species.findMany();
   const breeds = await prisma.breed.findMany();
 
   const breedsBySpecies = Object.groupBy(breeds, (b) => b.species_id);
 
-  // 👤 Users
-  console.log("🌱 Seeding Users...");
+  console.log("Seeding Users...");
 
   const bcrypt = require("bcrypt");
   const adminPassword = await bcrypt.hash("admin123", 10);
@@ -180,7 +178,7 @@ async function main() {
     });
   }
 
-  console.log("✅ Admins created");
+  console.log("Admins created");
 
   if (WITH_USERS || FULL_SEED) {
     // Insert all fixed users
@@ -199,7 +197,7 @@ async function main() {
       fixedUsers.push(user);
     }
 
-    console.log("🌱 Creating pets for fixed users...");
+    console.log("Creating pets for fixed users...");
 
     for (const user of fixedUsers) {
       const species = speciesList[0]; // Dog (safe default)
@@ -224,7 +222,7 @@ async function main() {
         })),
       });
     }
-    console.log("🌱 Assigning preferences to fixed users...");
+    console.log("Assigning preferences to fixed users...");
 
     for (const user of fixedUsers) {
       const userPrefs = getRandomPreferences(3);
@@ -235,11 +233,11 @@ async function main() {
           preference_id: prefMap[prefKey],
           weight: Math.random() * 0.5 + 0.7,
         })),
-        skipDuplicates: true, // 🔥 REQUIRED
+        skipDuplicates: true,
       });
     }
 
-    console.log("✅ Fixed users created");
+    console.log("Fixed users created");
     const users = [...fixedUsers];
 
     for (let i = 0; i < process.env.NUM_USERS; i++) {
@@ -249,9 +247,9 @@ async function main() {
         }),
       );
     }
-    // 🐶 Pets + Photos
+
     if (WITH_PETS || FULL_SEED) {
-      console.log("🌱 Seeding pets...");
+      console.log("Seeding pets...");
       for (const user of users) {
         const numPets = faker.number.int({ min: 1, max: 3 });
 
@@ -303,11 +301,11 @@ async function main() {
             preference_id: prefMap[prefKey],
             weight: Math.random() * 0.5 + 0.7,
           })),
-          skipDuplicates: true, // 🔥 REQUIRED
+          skipDuplicates: true,
         });
       }
 
-      console.log("✅ Advanced seed completed!");
+      console.log("Advanced seed completed!");
     }
   }
 }

@@ -126,7 +126,7 @@ const onDateChange = (event: any, selectedDate?: Date) => {
           }
         }
       } catch (error) {
-        console.error("❌ Erro ao carregar perfil:", error);
+        console.error("Erro ao carregar perfil:", error);
       } finally {
         setIsLoading(false);
       }

@@ -214,7 +214,7 @@ exports.saveAdoptionInteraction = async (req, res) => {
         where: { adoption_id: existing.adoption_id },
         data: { like_dislike },
       });
-      console.log(`🔄 Interação atualizada:`, interaction.adoption_id);
+      console.log(`Interação atualizada:`, interaction.adoption_id);
     } else {
       interaction = await prisma.tutorAdoptionInteraction.create({
         data: {
@@ -223,17 +223,15 @@ exports.saveAdoptionInteraction = async (req, res) => {
           like_dislike,
         },
       });
-      console.log(`✅ Interação criada:`, interaction.adoption_id);
+      console.log(`Interação criada:`, interaction.adoption_id);
     }
 
     res.status(201).json({
-      message: like_dislike
-        ? "❤️ Interesse registado"
-        : "❌ Rejeição registada",
+      message: like_dislike ? "Interesse registado" : "Rejeição registada",
       interaction,
     });
   } catch (error) {
-    console.error("🔴 Erro ao guardar interação de adoção:", error);
+    console.error("Erro ao guardar interação de adoção:", error);
     res
       .status(500)
       .json({ error: "Erro ao guardar interação", details: error.message });

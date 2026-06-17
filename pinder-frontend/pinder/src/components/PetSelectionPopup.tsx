@@ -107,7 +107,7 @@ export default function PetSelectionPopup({ visible, onClose }: PetSelectionPopu
               ]}
               onPress={() => {
                 const tutorId = user.user_id || user.id;
-                console.log(`🔀 [PetSelectionPopup] Selecionando tutor: user_id=${user.user_id}, id=${user.id}, final_id=${tutorId}`);
+                console.log(`[PetSelectionPopup] Selecionando tutor: user_id=${user.user_id}, id=${user.id}, final_id=${tutorId}`);
                 setActiveProfile({ type: 'tutor', id: tutorId });
                 onClose();
                 router.replace('/feedSwipe');

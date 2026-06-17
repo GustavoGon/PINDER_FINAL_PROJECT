@@ -2,7 +2,7 @@ const prisma = require("../prisma");
 
 module.exports = (io) => {
   io.on("connection", (socket) => {
-    console.log("🟢 Connected:", socket.id);
+    console.log("Connected:", socket.id);
 
     const { userId } = socket.handshake.query || {};
     socket.data.userId = userId;
@@ -10,13 +10,13 @@ module.exports = (io) => {
     socket.on("join_chat", ({ matchId }) => {
       const room = `match_${matchId}`;
       socket.join(room);
-      console.log(`➡️ ${socket.id} joined ${room}`);
+      console.log(`${socket.id} joined ${room}`);
     });
 
     socket.on("leave_chat", ({ matchId }) => {
       const room = `match_${matchId}`;
       socket.leave(room);
-      console.log(`⬅️ ${socket.id} left ${room}`);
+      console.log(`⬅${socket.id} left ${room}`);
     });
 
     socket.on("send_message", async (data, ack) => {
